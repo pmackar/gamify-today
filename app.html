@@ -8,34 +8,84 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
 </head>
 <body>
+  <!-- SVG Definitions -->
+  <svg style="position: absolute; width: 0; height: 0;">
+    <defs>
+      <linearGradient id="levelGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color: #8b5cf6"/>
+        <stop offset="100%" style="stop-color: #2d7dd2"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">gamify.today</div>
     </div>
 
-    <!-- XP Display -->
-    <div style="padding: var(--space-md);">
-      <div class="xp-display">
-        <div class="level-badge">
-          <span class="level-number" id="userLevel">1</span>
-        </div>
-        <div class="xp-bar-container">
-          <div class="xp-bar-label">
-            <span id="xpCurrent">0</span> / <span id="xpToNext">100</span> XP
+    <!-- Character Profile Card -->
+    <div class="character-profile">
+      <div class="character-card">
+        <!-- Avatar & Level -->
+        <div class="character-avatar-section">
+          <div class="character-avatar" id="characterAvatar">
+            <div class="avatar-glow"></div>
+            <div class="avatar-icon" id="avatarIcon">🎮</div>
+            <div class="level-ring">
+              <svg class="level-ring-svg" viewBox="0 0 100 100">
+                <circle class="level-ring-bg" cx="50" cy="50" r="45"/>
+                <circle class="level-ring-progress" id="levelRingProgress" cx="50" cy="50" r="45"/>
+              </svg>
+            </div>
+            <div class="level-badge-overlay">
+              <span class="level-number" id="userLevel">1</span>
+            </div>
           </div>
-          <div class="xp-bar">
-            <div class="xp-bar-fill" id="xpBarFill" style="width: 0%"></div>
+          <div class="character-info">
+            <div class="character-rank" id="characterRank">Novice</div>
+            <div class="character-title">Task Warrior</div>
           </div>
         </div>
-      </div>
 
-      <!-- Streak -->
-      <div class="streak-display" id="streakDisplay" style="margin-top: var(--space-md);">
-        <span class="streak-icon">🔥</span>
-        <div>
-          <div class="streak-count" id="streakCount">0</div>
-          <div class="streak-label">day streak</div>
+        <!-- XP Progress -->
+        <div class="xp-section">
+          <div class="xp-header">
+            <span class="xp-label">Experience</span>
+            <span class="xp-value"><span id="xpCurrent">0</span> / <span id="xpToNext">100</span> XP</span>
+          </div>
+          <div class="xp-bar-wrapper">
+            <div class="xp-bar-track">
+              <div class="xp-bar-fill" id="xpBarFill" style="width: 0%">
+                <div class="xp-bar-shine"></div>
+              </div>
+            </div>
+            <div class="xp-particles" id="xpParticles"></div>
+          </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="character-stats">
+          <!-- Streak -->
+          <div class="stat-box streak-box" id="streakDisplay">
+            <div class="stat-icon-wrapper">
+              <span class="stat-icon flame-icon">🔥</span>
+            </div>
+            <div class="stat-content">
+              <div class="stat-value" id="streakCount">0</div>
+              <div class="stat-label">Streak</div>
+            </div>
+          </div>
+          <!-- Tasks Today -->
+          <div class="stat-box tasks-box">
+            <div class="stat-icon-wrapper">
+              <span class="stat-icon">✅</span>
+            </div>
+            <div class="stat-content">
+              <div class="stat-value" id="tasksCompletedToday">0</div>
+              <div class="stat-label">Today</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -40,25 +40,97 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// Character ranks based on level
+const characterRanks = [
+  { minLevel: 1, rank: 'Novice', icon: '🎮' },
+  { minLevel: 5, rank: 'Apprentice', icon: '⚔️' },
+  { minLevel: 10, rank: 'Journeyman', icon: '🛡️' },
+  { minLevel: 15, rank: 'Adept', icon: '🗡️' },
+  { minLevel: 20, rank: 'Expert', icon: '🏹' },
+  { minLevel: 30, rank: 'Master', icon: '👑' },
+  { minLevel: 40, rank: 'Grandmaster', icon: '⚡' },
+  { minLevel: 50, rank: 'Legend', icon: '🌟' },
+  { minLevel: 75, rank: 'Mythic', icon: '🔱' },
+  { minLevel: 100, rank: 'Immortal', icon: '💎' }
+];
+
+function getRankForLevel(level) {
+  let result = characterRanks[0];
+  for (const rank of characterRanks) {
+    if (level >= rank.minLevel) result = rank;
+    else break;
+  }
+  return result;
+}
+
 // User Display
 function updateUserDisplay() {
   if (!currentUser) return;
 
-  document.getElementById('userLevel').textContent = currentUser.level;
-  document.getElementById('xpCurrent').textContent = currentUser.xp;
-  document.getElementById('xpToNext').textContent = currentUser.xpToNext;
+  const level = currentUser.level || 1;
+  const xp = currentUser.xp || 0;
+  const xpToNext = currentUser.xpToNext || 100;
+  const streak = currentUser.currentStreak || 0;
 
-  const xpPercent = (currentUser.xp / currentUser.xpToNext) * 100;
-  document.getElementById('xpBarFill').style.width = `${xpPercent}%`;
+  // Update level badge
+  document.getElementById('userLevel').textContent = level;
 
-  document.getElementById('streakCount').textContent = currentUser.currentStreak;
+  // Update XP display
+  document.getElementById('xpCurrent').textContent = xp;
+  document.getElementById('xpToNext').textContent = xpToNext;
 
-  // Update streak visibility
-  const streakDisplay = document.getElementById('streakDisplay');
-  if (currentUser.currentStreak > 0) {
-    streakDisplay.style.display = 'flex';
-  } else {
-    streakDisplay.style.display = 'none';
+  // Update XP bar
+  const xpPercent = Math.min((xp / xpToNext) * 100, 100);
+  const xpBarFill = document.getElementById('xpBarFill');
+  if (xpBarFill) {
+    xpBarFill.style.width = `${xpPercent}%`;
+  }
+
+  // Update level ring progress (SVG circle)
+  const levelRing = document.getElementById('levelRingProgress');
+  if (levelRing) {
+    const circumference = 2 * Math.PI * 45; // r=45
+    const offset = circumference - (xpPercent / 100) * circumference;
+    levelRing.style.strokeDashoffset = offset;
+  }
+
+  // Update character rank and icon
+  const rankInfo = getRankForLevel(level);
+  const rankEl = document.getElementById('characterRank');
+  const avatarIcon = document.getElementById('avatarIcon');
+  if (rankEl) rankEl.textContent = rankInfo.rank;
+  if (avatarIcon) avatarIcon.textContent = rankInfo.icon;
+
+  // Update streak
+  document.getElementById('streakCount').textContent = streak;
+
+  // Update tasks completed today
+  updateTasksCompletedToday();
+}
+
+// Update tasks completed today count
+async function updateTasksCompletedToday() {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const data = await api.getTasks({ is_completed: 'true' });
+    const todayTasks = data.tasks.filter(t => {
+      const completedDate = new Date(t.completed_at || t.updated_at);
+      return completedDate >= today;
+    });
+    const countEl = document.getElementById('tasksCompletedToday');
+    if (countEl) countEl.textContent = todayTasks.length;
+  } catch (error) {
+    console.error('Failed to get tasks completed today:', error);
+  }
+}
+
+// Trigger level up animation
+function triggerLevelUpAnimation() {
+  const avatar = document.getElementById('characterAvatar');
+  if (avatar) {
+    avatar.classList.add('level-up');
+    setTimeout(() => avatar.classList.remove('level-up'), 1000);
   }
 }
 
@@ -168,6 +240,7 @@ async function toggleTaskComplete(taskId, complete) {
       // Check for level up
       if (gam.level > currentUser.level) {
         Gamification.createConfetti();
+        triggerLevelUpAnimation();
         showToast(`Level Up! You're now level ${gam.level}!`, 'success');
       }
 
