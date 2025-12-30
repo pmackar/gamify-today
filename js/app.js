@@ -781,14 +781,16 @@ function handleCommandPaletteKeydown(e) {
     cmd.category.toLowerCase().includes(query)
   );
 
-  if (e.key === 'ArrowDown') {
+  if (e.key === 'ArrowDown' || (e.key === 'j' && e.ctrlKey)) {
     e.preventDefault();
     commandPaletteSelectedIndex = Math.min(commandPaletteSelectedIndex + 1, filteredCommands.length - 1);
     renderCommandPalette(input.value);
-  } else if (e.key === 'ArrowUp') {
+    scrollCommandItemIntoView();
+  } else if (e.key === 'ArrowUp' || (e.key === 'k' && e.ctrlKey)) {
     e.preventDefault();
     commandPaletteSelectedIndex = Math.max(commandPaletteSelectedIndex - 1, 0);
     renderCommandPalette(input.value);
+    scrollCommandItemIntoView();
   } else if (e.key === 'Enter') {
     e.preventDefault();
     if (filteredCommands[commandPaletteSelectedIndex]) {
@@ -797,7 +799,27 @@ function handleCommandPaletteKeydown(e) {
   } else if (e.key === 'Escape') {
     e.preventDefault();
     closeCommandPalette();
+  } else if (e.key === 'Tab') {
+    // Tab cycles through results
+    e.preventDefault();
+    if (e.shiftKey) {
+      commandPaletteSelectedIndex = commandPaletteSelectedIndex <= 0 ? filteredCommands.length - 1 : commandPaletteSelectedIndex - 1;
+    } else {
+      commandPaletteSelectedIndex = commandPaletteSelectedIndex >= filteredCommands.length - 1 ? 0 : commandPaletteSelectedIndex + 1;
+    }
+    renderCommandPalette(input.value);
+    scrollCommandItemIntoView();
   }
+}
+
+// Helper to scroll command palette item into view
+function scrollCommandItemIntoView() {
+  setTimeout(() => {
+    const selected = document.querySelector('.command-palette-item.selected');
+    if (selected) {
+      selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, 0);
 }
 
 // Shortcuts Modal
@@ -907,10 +929,10 @@ function handleKeydown(e) {
 
   // Single key shortcuts
   switch (key) {
-    // New task
+    // New task - focus quick add input
     case 'n':
       e.preventDefault();
-      showTaskModal();
+      focusQuickAdd();
       break;
 
     // Show shortcuts help
@@ -992,4 +1014,82 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
       overlay.classList.remove('active');
     }
   });
+});
+
+// ========================================
+// Quick Add Floating Input
+// ========================================
+
+function focusQuickAdd() {
+  const input = document.getElementById('quickAddInput');
+  if (input) {
+    input.focus();
+    input.placeholder = 'What needs to be done?';
+  }
+}
+
+function blurQuickAdd() {
+  const input = document.getElementById('quickAddInput');
+  if (input) {
+    input.value = '';
+    input.blur();
+    input.placeholder = 'Press N to add a task...';
+  }
+}
+
+async function submitQuickAdd() {
+  const input = document.getElementById('quickAddInput');
+  const title = input?.value?.trim();
+
+  if (!title) return;
+
+  try {
+    await api.createTask({
+      title: title,
+      tier: 'tier3',
+      difficulty: 'medium'
+    });
+
+    input.value = '';
+    showToast('Task created!', 'success');
+    await loadTasks();
+
+    // Keep focus for rapid entry
+    input.focus();
+  } catch (error) {
+    console.error('Failed to create task:', error);
+    showToast(error.message || 'Failed to create task', 'error');
+  }
+}
+
+// Quick add input handlers
+document.getElementById('quickAddInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    submitQuickAdd();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    blurQuickAdd();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // Cmd+Enter opens full modal with current text
+    e.preventDefault();
+    const title = document.getElementById('quickAddInput')?.value?.trim();
+    blurQuickAdd();
+    showTaskModal();
+    if (title) {
+      document.getElementById('taskTitle').value = title;
+    }
+  }
+});
+
+// Update placeholder on focus/blur
+document.getElementById('quickAddInput')?.addEventListener('focus', () => {
+  document.getElementById('quickAddInput').placeholder = 'What needs to be done?';
+});
+
+document.getElementById('quickAddInput')?.addEventListener('blur', () => {
+  const input = document.getElementById('quickAddInput');
+  if (!input.value) {
+    input.placeholder = 'Press N to add a task...';
+  }
 });

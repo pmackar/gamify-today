@@ -133,6 +133,28 @@
         <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
       </div>
     </div>
+
+    <!-- Quick Add Floating Input -->
+    <div class="quick-add-container" id="quickAddContainer">
+      <div class="quick-add-wrapper">
+        <span class="quick-add-icon">✨</span>
+        <input
+          type="text"
+          class="quick-add-input"
+          id="quickAddInput"
+          placeholder="Press N to add a task..."
+          autocomplete="off"
+        >
+        <div class="quick-add-hints">
+          <span class="kbd">N</span>
+          <span class="quick-add-hint-text">to focus</span>
+          <span class="kbd">↵</span>
+          <span class="quick-add-hint-text">to add</span>
+          <span class="kbd">Esc</span>
+          <span class="quick-add-hint-text">to cancel</span>
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- Task Modal -->
@@ -332,6 +354,7 @@
       <div class="command-palette-footer">
         <div class="command-palette-hints">
           <span class="command-palette-hint"><span class="kbd">↑↓</span> Navigate</span>
+          <span class="command-palette-hint"><span class="kbd">Tab</span> Cycle</span>
           <span class="command-palette-hint"><span class="kbd">↵</span> Select</span>
           <span class="command-palette-hint"><span class="kbd">Esc</span> Close</span>
         </div>
@@ -378,8 +401,16 @@
           <div class="shortcuts-section">
             <div class="shortcuts-section-title">Task Actions</div>
             <div class="shortcut-row">
-              <span class="shortcut-label">New task</span>
+              <span class="shortcut-label">Quick add task</span>
               <span class="shortcut-keys"><span class="kbd">N</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Submit quick add</span>
+              <span class="shortcut-keys"><span class="kbd">↵</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Full task modal</span>
+              <span class="shortcut-keys"><span class="kbd">⌘</span><span class="kbd">↵</span></span>
             </div>
             <div class="shortcut-row">
               <span class="shortcut-label">Complete task</span>
