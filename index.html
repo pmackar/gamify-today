@@ -7,6 +7,8 @@
   <meta name="description" content="A gamified todo app that turns your tasks into XP. Complete tasks, earn achievements, and level up your productivity.">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <!-- Hero Section -->
@@ -64,6 +66,13 @@
       <div class="modal-body">
         <!-- Login Form -->
         <form id="loginForm" class="flex flex-col gap-md">
+          <!-- Google Sign-In Button -->
+          <div id="googleSignInButton" style="display: flex; justify-content: center;"></div>
+
+          <div class="auth-divider">
+            <span>or sign in with email</span>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Email</label>
             <input type="email" class="form-input" id="loginEmail" placeholder="you@example.com" required>
@@ -84,6 +93,13 @@
 
         <!-- Register Form -->
         <form id="registerForm" class="flex flex-col gap-md" style="display: none;">
+          <!-- Google Sign-In Button -->
+          <div id="googleSignUpButton" style="display: flex; justify-content: center;"></div>
+
+          <div class="auth-divider">
+            <span>or create account with email</span>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Username</label>
             <input type="text" class="form-input" id="registerUsername" placeholder="coolgamer123" required minlength="3" maxlength="50">
@@ -115,11 +131,86 @@
       ? 'http://localhost:3001/api'
       : 'https://gamify-today-api-production.up.railway.app/api';
 
+    // Google Client ID - configured in Google Cloud Console
+    const GOOGLE_CLIENT_ID = '425474145890-afnm8ej8403fqau5ah4lkl1r4kor9uq2.apps.googleusercontent.com';
+
     // Check if already logged in
     const token = localStorage.getItem('token');
     if (token) {
       window.location.href = 'app.html';
     }
+
+    // Initialize Google Sign-In
+    function initGoogleSignIn() {
+      if (typeof google === 'undefined') {
+        // Retry after a short delay if Google script hasn't loaded
+        setTimeout(initGoogleSignIn, 100);
+        return;
+      }
+
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleSignIn,
+        auto_select: false
+      });
+
+      // Render the Google Sign-In button in login form
+      google.accounts.id.renderButton(
+        document.getElementById('googleSignInButton'),
+        {
+          theme: 'outline',
+          size: 'large',
+          width: '100%',
+          text: 'continue_with'
+        }
+      );
+
+      // Render the Google Sign-In button in register form
+      google.accounts.id.renderButton(
+        document.getElementById('googleSignUpButton'),
+        {
+          theme: 'outline',
+          size: 'large',
+          width: '100%',
+          text: 'signup_with'
+        }
+      );
+    }
+
+    // Handle Google Sign-In callback
+    async function handleGoogleSignIn(response) {
+      try {
+        const result = await fetch(`${API_URL}/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential })
+        });
+
+        const data = await result.json();
+
+        if (!result.ok) {
+          // Show error in whichever form is visible
+          const errorDiv = document.getElementById('loginForm').style.display !== 'none'
+            ? document.getElementById('loginError')
+            : document.getElementById('registerError');
+          errorDiv.textContent = data.error || 'Google sign-in failed';
+          errorDiv.style.display = 'block';
+          return;
+        }
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = 'app.html';
+      } catch (error) {
+        console.error('Google sign-in error:', error);
+        const errorDiv = document.getElementById('loginError');
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    }
+
+    // Initialize Google Sign-In when page loads
+    window.addEventListener('load', initGoogleSignIn);
 
     // Create floating particles
     function createParticles() {

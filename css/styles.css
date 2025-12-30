@@ -397,6 +397,24 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: bold;
 }
 
+/* Auth Divider */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin: var(--space-sm) 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--bg-tertiary);
+}
+
 /* ========================================
    Cards
    ======================================== */

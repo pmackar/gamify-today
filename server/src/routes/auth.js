@@ -1,10 +1,14 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { OAuth2Client } = require('google-auth-library');
 const db = require('../db/config');
 const { authenticate, generateToken } = require('../middleware/auth');
 const { xpToNextLevel } = require('../services/gamification');
 
 const router = express.Router();
+
+// Google OAuth client
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Register new user
 router.post('/register', async (req, res) => {
@@ -125,6 +129,90 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Failed to login' });
+  }
+});
+
+// Google OAuth login
+router.post('/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ error: 'Google credential is required' });
+    }
+
+    // Verify the Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    // Check if user exists with this Google ID or email
+    let result = await db.query(
+      'SELECT * FROM users WHERE google_id = $1 OR email = $2',
+      [googleId, email.toLowerCase()]
+    );
+
+    let user;
+    let isNewUser = false;
+
+    if (result.rows.length === 0) {
+      // Create new user
+      isNewUser = true;
+      const username = name.replace(/\s+/g, '').toLowerCase().slice(0, 20) + Math.floor(Math.random() * 1000);
+
+      result = await db.query(
+        `INSERT INTO users (email, username, auth_provider, google_id, avatar, xp_to_next)
+         VALUES ($1, $2, 'google', $3, $4, $5)
+         RETURNING id, email, username, avatar, level, xp, xp_to_next, total_tasks_completed, current_streak, longest_streak, achievements, created_at`,
+        [email.toLowerCase(), username, googleId, picture, xpToNextLevel(1)]
+      );
+
+      user = result.rows[0];
+    } else {
+      user = result.rows[0];
+
+      // Update Google ID if user exists with email but not google_id
+      if (!user.google_id) {
+        await db.query(
+          'UPDATE users SET google_id = $1, auth_provider = $2 WHERE id = $3',
+          [googleId, user.auth_provider === 'email' ? 'email,google' : 'google', user.id]
+        );
+      }
+
+      // Update last login and avatar if changed
+      await db.query(
+        'UPDATE users SET last_login = CURRENT_TIMESTAMP, avatar = COALESCE(avatar, $1) WHERE id = $2',
+        [picture, user.id]
+      );
+    }
+
+    const token = generateToken(user.id);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        avatar: user.avatar || picture,
+        level: user.level,
+        xp: user.xp,
+        xpToNext: user.xp_to_next,
+        totalTasksCompleted: user.total_tasks_completed,
+        currentStreak: user.current_streak,
+        longestStreak: user.longest_streak,
+        achievements: user.achievements || [],
+        createdAt: user.created_at
+      },
+      isNewUser
+    });
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(401).json({ error: 'Invalid Google credential' });
   }
 });
 
