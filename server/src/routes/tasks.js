@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db/config');
 const { authenticate } = require('../middleware/auth');
-const { processTaskCompletion, calculateTaskXP } = require('../services/gamification');
+const { processTaskCompletion, processTaskUncompletion, calculateTaskXP } = require('../services/gamification');
 
 const router = express.Router();
 
@@ -275,13 +275,32 @@ router.post('/:id/complete', async (req, res) => {
   }
 });
 
-// Uncomplete task (undo completion)
+// Uncomplete task (undo completion) - revokes XP
 router.post('/:id/uncomplete', async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Note: This doesn't revert XP - that would be complex. Just marks as incomplete.
+    // Get task first to check ownership and get xp_earned
+    const taskResult = await db.query(
+      'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    const task = taskResult.rows[0];
+
+    if (!task.is_completed) {
+      return res.status(400).json({ error: 'Task is not completed' });
+    }
+
+    // Revoke XP and update user stats
+    const gamificationResult = await processTaskUncompletion(userId, task);
+
+    // Update task as incomplete
     const result = await db.query(
       `UPDATE tasks SET is_completed = false, completed_at = NULL, was_on_time = NULL, status = 'In progress'
        WHERE id = $1 AND user_id = $2
@@ -289,14 +308,13 @@ router.post('/:id/uncomplete', async (req, res) => {
       [id, userId]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
+    const updatedTask = result.rows[0];
+    updatedTask.xp_preview = calculateTaskXP(updatedTask, req.user.current_streak);
 
-    const task = result.rows[0];
-    task.xp_preview = calculateTaskXP(task, req.user.current_streak);
-
-    res.json({ task, note: 'XP was not reverted' });
+    res.json({
+      task: updatedTask,
+      gamification: gamificationResult
+    });
   } catch (error) {
     console.error('Uncomplete task error:', error);
     res.status(500).json({ error: 'Failed to uncomplete task' });

@@ -243,9 +243,107 @@ function getAchievements(userAchievements = []) {
   }));
 }
 
+// Process task uncompletion - revoke XP and update user stats
+async function processTaskUncompletion(userId, task) {
+  const client = await db.pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Get current user stats
+    const userResult = await client.query(
+      'SELECT level, xp, xp_to_next, total_tasks_completed FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const user = userResult.rows[0];
+    const xpToRevoke = task.xp_earned || 0;
+
+    if (xpToRevoke === 0) {
+      // No XP was earned for this task, just update count
+      await client.query(
+        'UPDATE users SET total_tasks_completed = GREATEST(0, total_tasks_completed - 1) WHERE id = $1',
+        [userId]
+      );
+      await client.query('COMMIT');
+      return { revokedXP: 0, totalXP: user.xp, level: user.level, xpToNext: user.xp_to_next };
+    }
+
+    // Calculate new XP and level after revocation
+    // We need to work backwards - add back XP from previous levels if we need to delevel
+    let totalXPEver = 0;
+    for (let l = 1; l < user.level; l++) {
+      totalXPEver += xpToNextLevel(l);
+    }
+    totalXPEver += user.xp; // Add current progress in current level
+
+    // Subtract the revoked XP
+    totalXPEver = Math.max(0, totalXPEver - xpToRevoke);
+
+    // Recalculate level from total XP
+    let newLevel = 1;
+    let remainingXP = totalXPEver;
+    while (remainingXP >= xpToNextLevel(newLevel)) {
+      remainingXP -= xpToNextLevel(newLevel);
+      newLevel++;
+    }
+
+    const newXP = remainingXP;
+    const newXPToNext = xpToNextLevel(newLevel);
+
+    // Update user
+    await client.query(
+      `UPDATE users SET
+        level = $1, xp = $2, xp_to_next = $3,
+        total_tasks_completed = GREATEST(0, total_tasks_completed - 1)
+      WHERE id = $4`,
+      [newLevel, newXP, newXPToNext, userId]
+    );
+
+    // Clear the xp_earned on the task
+    await client.query(
+      'UPDATE tasks SET xp_earned = 0 WHERE id = $1',
+      [task.id]
+    );
+
+    // Update daily stats (decrement if same day)
+    const today = new Date().toISOString().split('T')[0];
+    const completedDate = task.completed_at ? new Date(task.completed_at).toISOString().split('T')[0] : today;
+
+    await client.query(
+      `UPDATE daily_stats SET
+        tasks_completed = GREATEST(0, tasks_completed - 1),
+        xp_earned = GREATEST(0, xp_earned - $1),
+        on_time_completions = GREATEST(0, on_time_completions - $2)
+      WHERE user_id = $3 AND date = $4`,
+      [xpToRevoke, task.was_on_time ? 1 : 0, userId, completedDate]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      revokedXP: xpToRevoke,
+      totalXP: newXP,
+      level: newLevel,
+      xpToNext: newXPToNext,
+      levelChanged: newLevel !== user.level
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   calculateTaskXP,
   processTaskCompletion,
+  processTaskUncompletion,
   xpToNextLevel,
   getAchievements,
   ACHIEVEMENTS

@@ -254,7 +254,25 @@ async function toggleTaskComplete(taskId, complete) {
       localStorage.setItem('user', JSON.stringify(currentUser));
       updateUserDisplay();
     } else {
-      await api.uncompleteTask(taskId);
+      const result = await api.uncompleteTask(taskId);
+
+      // Show XP revoked toast
+      if (result.gamification && result.gamification.revokedXP > 0) {
+        showToast(`-${result.gamification.revokedXP} XP revoked`, 'error');
+
+        // Update user data
+        currentUser.level = result.gamification.level;
+        currentUser.xp = result.gamification.totalXP;
+        currentUser.xpToNext = result.gamification.xpToNext;
+        currentUser.totalTasksCompleted = Math.max(0, currentUser.totalTasksCompleted - 1);
+        localStorage.setItem('user', JSON.stringify(currentUser));
+        updateUserDisplay();
+
+        // Show level down warning if level changed
+        if (result.gamification.levelChanged) {
+          showToast(`Level decreased to ${result.gamification.level}`, 'error');
+        }
+      }
     }
 
     await loadTasks();
