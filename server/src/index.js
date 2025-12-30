@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? 'https://gamify.today'
+    ? [/\.vercel\.app$/, /gamify\.today$/]
     : true, // Allow all origins in development
   credentials: true
 }));

@@ -1,5 +1,7 @@
 // API Client for gamify.today
-const API_URL = 'http://localhost:3001/api';
+const API_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001/api'
+  : 'https://gamify-today-api-production.up.railway.app/api';
 
 class ApiClient {
   constructor() {
