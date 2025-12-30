@@ -1913,7 +1913,7 @@ h1, h2, h3, h4, h5, h6 {
 .theme-selector {
   display: flex;
   gap: 2px;
-  padding: var(--space-xs);
+  padding: 3px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   margin-bottom: var(--space-sm);
@@ -1922,16 +1922,17 @@ h1, h2, h3, h4, h5, h6 {
 .theme-pill {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: 3px;
+  padding: 4px 8px;
   border: none;
   background: transparent;
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: all var(--transition-fast);
-  font-size: var(--text-xs);
+  font-size: 11px;
   color: var(--text-secondary);
   font-family: var(--font-primary);
+  white-space: nowrap;
 }
 
 .theme-pill:hover {
@@ -1946,7 +1947,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .theme-pill-icon {
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -2535,6 +2536,6 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .theme-pill {
-    padding: 6px 8px;
+    padding: 4px 6px;
   }
 }
