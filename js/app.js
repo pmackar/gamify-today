@@ -1017,14 +1017,176 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 });
 
 // ========================================
-// Quick Add Floating Input
+// Quick Add Floating Input with Natural Language
 // ========================================
+
+// Parse natural language input for task creation
+function parseQuickAddInput(text) {
+  let title = text;
+  const result = {
+    title: '',
+    project_id: null,
+    category_id: null,
+    priority: null,
+    difficulty: 'medium',
+    tier: 'tier3',
+    due_date: null
+  };
+
+  // Parse @project
+  const projectMatch = title.match(/@(\S+)/);
+  if (projectMatch) {
+    const projectName = projectMatch[1].toLowerCase().replace(/-/g, ' ');
+    const project = projects.find(p =>
+      p.name.toLowerCase() === projectName ||
+      p.name.toLowerCase().startsWith(projectName) ||
+      p.name.toLowerCase().replace(/\s+/g, '-') === projectMatch[1].toLowerCase()
+    );
+    if (project) {
+      result.project_id = project.id;
+    }
+    title = title.replace(/@\S+/, '').trim();
+  }
+
+  // Parse #category
+  const categoryMatch = title.match(/#(\S+)/);
+  if (categoryMatch) {
+    const categoryName = categoryMatch[1].toLowerCase().replace(/-/g, ' ');
+    const category = categories.find(c =>
+      c.name.toLowerCase() === categoryName ||
+      c.name.toLowerCase().startsWith(categoryName) ||
+      c.name.toLowerCase().replace(/\s+/g, '-') === categoryMatch[1].toLowerCase()
+    );
+    if (category) {
+      result.category_id = category.id;
+    }
+    title = title.replace(/#\S+/, '').trim();
+  }
+
+  // Parse !priority (!high, !medium, !low, !1, !2, !3)
+  const priorityMatch = title.match(/!(\S+)/);
+  if (priorityMatch) {
+    const p = priorityMatch[1].toLowerCase();
+    if (p === 'high' || p === '1' || p === 'h') result.priority = 'High';
+    else if (p === 'medium' || p === '2' || p === 'm' || p === 'med') result.priority = 'Medium';
+    else if (p === 'low' || p === '3' || p === 'l') result.priority = 'Low';
+    title = title.replace(/!\S+/, '').trim();
+  }
+
+  // Parse ~difficulty (~easy, ~medium, ~hard, ~epic)
+  const difficultyMatch = title.match(/~(\S+)/);
+  if (difficultyMatch) {
+    const d = difficultyMatch[1].toLowerCase();
+    if (d === 'easy' || d === 'e' || d === '1') result.difficulty = 'easy';
+    else if (d === 'medium' || d === 'm' || d === 'med' || d === '2') result.difficulty = 'medium';
+    else if (d === 'hard' || d === 'h' || d === '3') result.difficulty = 'hard';
+    else if (d === 'epic' || d === 'x' || d === '4') result.difficulty = 'epic';
+    title = title.replace(/~\S+/, '').trim();
+  }
+
+  // Parse ^tier (^quick, ^standard, ^major or ^1, ^2, ^3)
+  const tierMatch = title.match(/\^(\S+)/);
+  if (tierMatch) {
+    const t = tierMatch[1].toLowerCase();
+    if (t === 'quick' || t === 'q' || t === '1' || t === 'small') result.tier = 'tier3';
+    else if (t === 'standard' || t === 's' || t === '2' || t === 'std') result.tier = 'tier2';
+    else if (t === 'major' || t === 'm' || t === '3' || t === 'big') result.tier = 'tier1';
+    title = title.replace(/\^\S+/, '').trim();
+  }
+
+  // Parse due dates
+  const dueDateResult = parseDueDate(title);
+  if (dueDateResult.date) {
+    result.due_date = dueDateResult.date;
+    title = dueDateResult.remaining;
+  }
+
+  result.title = title.trim();
+  return result;
+}
+
+// Parse natural language due dates
+function parseDueDate(text) {
+  const now = new Date();
+  let date = null;
+  let remaining = text;
+
+  // Today
+  if (/\btoday\b/i.test(text)) {
+    date = new Date(now);
+    date.setHours(23, 59, 0, 0);
+    remaining = text.replace(/\btoday\b/i, '').trim();
+  }
+  // Tomorrow
+  else if (/\btomorrow\b/i.test(text) || /\btmr\b/i.test(text) || /\btmrw\b/i.test(text)) {
+    date = new Date(now);
+    date.setDate(date.getDate() + 1);
+    date.setHours(23, 59, 0, 0);
+    remaining = text.replace(/\b(tomorrow|tmr|tmrw)\b/i, '').trim();
+  }
+  // Day names (monday, tuesday, etc.)
+  else {
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayAbbr = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+    for (let i = 0; i < days.length; i++) {
+      const regex = new RegExp(`\\b(${days[i]}|${dayAbbr[i]})\\b`, 'i');
+      if (regex.test(text)) {
+        date = new Date(now);
+        const currentDay = date.getDay();
+        let daysUntil = i - currentDay;
+        if (daysUntil <= 0) daysUntil += 7;
+        date.setDate(date.getDate() + daysUntil);
+        date.setHours(23, 59, 0, 0);
+        remaining = text.replace(regex, '').trim();
+        break;
+      }
+    }
+  }
+
+  // "in X days"
+  if (!date) {
+    const inDaysMatch = text.match(/\bin\s+(\d+)\s*d(?:ays?)?\b/i);
+    if (inDaysMatch) {
+      date = new Date(now);
+      date.setDate(date.getDate() + parseInt(inDaysMatch[1]));
+      date.setHours(23, 59, 0, 0);
+      remaining = text.replace(inDaysMatch[0], '').trim();
+    }
+  }
+
+  // "next week"
+  if (!date && /\bnext\s*week\b/i.test(text)) {
+    date = new Date(now);
+    date.setDate(date.getDate() + 7);
+    date.setHours(23, 59, 0, 0);
+    remaining = text.replace(/\bnext\s*week\b/i, '').trim();
+  }
+
+  // Specific date formats: 12/25, 12-25, Dec 25, December 25
+  if (!date) {
+    // MM/DD or MM-DD
+    const slashMatch = text.match(/\b(\d{1,2})[\/\-](\d{1,2})\b/);
+    if (slashMatch) {
+      const month = parseInt(slashMatch[1]) - 1;
+      const day = parseInt(slashMatch[2]);
+      date = new Date(now.getFullYear(), month, day, 23, 59, 0, 0);
+      if (date < now) date.setFullYear(date.getFullYear() + 1);
+      remaining = text.replace(slashMatch[0], '').trim();
+    }
+  }
+
+  // Clean up extra spaces
+  remaining = remaining.replace(/\s+/g, ' ').trim();
+
+  return { date: date ? date.toISOString() : null, remaining };
+}
 
 function focusQuickAdd() {
   const input = document.getElementById('quickAddInput');
   if (input) {
     input.focus();
-    input.placeholder = 'What needs to be done?';
+    input.placeholder = 'Task @project #category !priority ~difficulty today...';
   }
 }
 
@@ -1034,24 +1196,40 @@ function blurQuickAdd() {
     input.value = '';
     input.blur();
     input.placeholder = 'Press N to add a task...';
+    hideQuickAddHints();
   }
 }
 
 async function submitQuickAdd() {
   const input = document.getElementById('quickAddInput');
-  const title = input?.value?.trim();
+  const rawText = input?.value?.trim();
 
-  if (!title) return;
+  if (!rawText) return;
 
   try {
-    await api.createTask({
-      title: title,
-      tier: 'tier3',
-      difficulty: 'medium'
-    });
+    const parsed = parseQuickAddInput(rawText);
+
+    if (!parsed.title) {
+      showToast('Please enter a task title', 'error');
+      return;
+    }
+
+    await api.createTask(parsed);
 
     input.value = '';
-    showToast('Task created!', 'success');
+    hideQuickAddHints();
+
+    // Build success message
+    let msg = 'Task created!';
+    if (parsed.project_id) {
+      const proj = projects.find(p => p.id === parsed.project_id);
+      if (proj) msg += ` in ${proj.name}`;
+    }
+    if (parsed.due_date) {
+      msg += ` due ${Gamification.formatDueDate(parsed.due_date)?.text || 'soon'}`;
+    }
+
+    showToast(msg, 'success');
     await loadTasks();
 
     // Keep focus for rapid entry
@@ -1062,29 +1240,197 @@ async function submitQuickAdd() {
   }
 }
 
+// Quick add autocomplete hints
+function showQuickAddHints(type, query) {
+  let hints = [];
+  const hintsContainer = document.getElementById('quickAddAutocomplete');
+
+  if (type === 'project') {
+    hints = projects.filter(p =>
+      p.name.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 5).map(p => ({ label: p.name, value: `@${p.name.replace(/\s+/g, '-')}`, icon: '📁' }));
+  } else if (type === 'category') {
+    hints = categories.filter(c =>
+      c.name.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 5).map(c => ({ label: c.name, value: `#${c.name.replace(/\s+/g, '-')}`, icon: '🏷️', color: c.color }));
+  } else if (type === 'priority') {
+    hints = [
+      { label: 'High', value: '!high', icon: '🔴' },
+      { label: 'Medium', value: '!medium', icon: '🟡' },
+      { label: 'Low', value: '!low', icon: '🟢' }
+    ].filter(h => h.label.toLowerCase().includes(query.toLowerCase()));
+  } else if (type === 'difficulty') {
+    hints = [
+      { label: 'Easy (1x)', value: '~easy', icon: '😊' },
+      { label: 'Medium (1.5x)', value: '~medium', icon: '💪' },
+      { label: 'Hard (2x)', value: '~hard', icon: '🔥' },
+      { label: 'Epic (3x)', value: '~epic', icon: '⚡' }
+    ].filter(h => h.label.toLowerCase().includes(query.toLowerCase()));
+  } else if (type === 'tier') {
+    hints = [
+      { label: 'Quick (1x)', value: '^quick', icon: '⚡' },
+      { label: 'Standard (2x)', value: '^standard', icon: '📋' },
+      { label: 'Major (3x)', value: '^major', icon: '🎯' }
+    ].filter(h => h.label.toLowerCase().includes(query.toLowerCase()));
+  }
+
+  if (hints.length === 0) {
+    hideQuickAddHints();
+    return;
+  }
+
+  hintsContainer.innerHTML = hints.map((h, i) => `
+    <div class="quick-add-hint-item ${i === 0 ? 'selected' : ''}" data-value="${h.value}">
+      <span class="quick-add-hint-icon" ${h.color ? `style="color: ${h.color}"` : ''}>${h.icon}</span>
+      <span class="quick-add-hint-label">${h.label}</span>
+      <span class="quick-add-hint-value">${h.value}</span>
+    </div>
+  `).join('');
+
+  hintsContainer.classList.add('visible');
+
+  // Add click handlers
+  hintsContainer.querySelectorAll('.quick-add-hint-item').forEach(item => {
+    item.addEventListener('click', () => selectQuickAddHint(item.dataset.value));
+  });
+}
+
+function hideQuickAddHints() {
+  const hintsContainer = document.getElementById('quickAddAutocomplete');
+  if (hintsContainer) {
+    hintsContainer.classList.remove('visible');
+    hintsContainer.innerHTML = '';
+  }
+}
+
+function selectQuickAddHint(value) {
+  const input = document.getElementById('quickAddInput');
+  if (!input) return;
+
+  // Replace the trigger and query with the selected value
+  const text = input.value;
+  const lastTrigger = Math.max(
+    text.lastIndexOf('@'),
+    text.lastIndexOf('#'),
+    text.lastIndexOf('!'),
+    text.lastIndexOf('~'),
+    text.lastIndexOf('^')
+  );
+
+  if (lastTrigger >= 0) {
+    input.value = text.slice(0, lastTrigger) + value + ' ';
+  }
+
+  hideQuickAddHints();
+  input.focus();
+}
+
+// Quick add autocomplete state
+let quickAddHintIndex = 0;
+
 // Quick add input handlers
 document.getElementById('quickAddInput')?.addEventListener('keydown', (e) => {
+  const hintsContainer = document.getElementById('quickAddAutocomplete');
+  const isHintsVisible = hintsContainer?.classList.contains('visible');
+
+  // Navigate hints with arrow keys
+  if (isHintsVisible && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab')) {
+    e.preventDefault();
+    const items = hintsContainer.querySelectorAll('.quick-add-hint-item');
+    if (items.length === 0) return;
+
+    items[quickAddHintIndex]?.classList.remove('selected');
+
+    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+      quickAddHintIndex = (quickAddHintIndex + 1) % items.length;
+    } else {
+      quickAddHintIndex = (quickAddHintIndex - 1 + items.length) % items.length;
+    }
+
+    items[quickAddHintIndex]?.classList.add('selected');
+    return;
+  }
+
+  // Select hint with Enter when hints are visible
+  if (isHintsVisible && e.key === 'Enter') {
+    e.preventDefault();
+    const selected = hintsContainer.querySelector('.quick-add-hint-item.selected');
+    if (selected) {
+      selectQuickAddHint(selected.dataset.value);
+    }
+    return;
+  }
+
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     submitQuickAdd();
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    blurQuickAdd();
+    if (isHintsVisible) {
+      hideQuickAddHints();
+    } else {
+      blurQuickAdd();
+    }
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     // Cmd+Enter opens full modal with current text
     e.preventDefault();
-    const title = document.getElementById('quickAddInput')?.value?.trim();
+    const input = document.getElementById('quickAddInput');
+    const parsed = parseQuickAddInput(input?.value?.trim() || '');
     blurQuickAdd();
     showTaskModal();
-    if (title) {
-      document.getElementById('taskTitle').value = title;
+    if (parsed.title) document.getElementById('taskTitle').value = parsed.title;
+    if (parsed.project_id) document.getElementById('taskProject').value = parsed.project_id;
+    if (parsed.category_id) document.getElementById('taskCategory').value = parsed.category_id;
+    if (parsed.priority) document.getElementById('taskPriority').value = parsed.priority;
+    if (parsed.difficulty) document.getElementById('taskDifficulty').value = parsed.difficulty;
+    if (parsed.tier) document.getElementById('taskTier').value = parsed.tier;
+    if (parsed.due_date) document.getElementById('taskDueDate').value = parsed.due_date.slice(0, 16);
+    updateXPPreview();
+  }
+});
+
+// Detect triggers while typing
+document.getElementById('quickAddInput')?.addEventListener('input', (e) => {
+  const text = e.target.value;
+  const cursorPos = e.target.selectionStart;
+  const textBeforeCursor = text.slice(0, cursorPos);
+
+  // Find the last trigger character before cursor
+  const triggers = ['@', '#', '!', '~', '^'];
+  let lastTriggerPos = -1;
+  let lastTrigger = null;
+
+  for (const trigger of triggers) {
+    const pos = textBeforeCursor.lastIndexOf(trigger);
+    if (pos > lastTriggerPos) {
+      // Check if there's a space after the trigger (meaning it's complete)
+      const afterTrigger = textBeforeCursor.slice(pos + 1);
+      if (!afterTrigger.includes(' ')) {
+        lastTriggerPos = pos;
+        lastTrigger = trigger;
+      }
     }
+  }
+
+  if (lastTrigger && lastTriggerPos >= 0) {
+    const query = textBeforeCursor.slice(lastTriggerPos + 1);
+    quickAddHintIndex = 0;
+
+    switch (lastTrigger) {
+      case '@': showQuickAddHints('project', query); break;
+      case '#': showQuickAddHints('category', query); break;
+      case '!': showQuickAddHints('priority', query); break;
+      case '~': showQuickAddHints('difficulty', query); break;
+      case '^': showQuickAddHints('tier', query); break;
+    }
+  } else {
+    hideQuickAddHints();
   }
 });
 
 // Update placeholder on focus/blur
 document.getElementById('quickAddInput')?.addEventListener('focus', () => {
-  document.getElementById('quickAddInput').placeholder = 'What needs to be done?';
+  document.getElementById('quickAddInput').placeholder = 'Task @project #category !priority ~difficulty today...';
 });
 
 document.getElementById('quickAddInput')?.addEventListener('blur', () => {
@@ -1092,4 +1438,10 @@ document.getElementById('quickAddInput')?.addEventListener('blur', () => {
   if (!input.value) {
     input.placeholder = 'Press N to add a task...';
   }
+  // Delay hiding hints to allow click selection
+  setTimeout(() => {
+    if (document.activeElement !== input) {
+      hideQuickAddHints();
+    }
+  }, 150);
 });

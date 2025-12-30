@@ -1623,6 +1623,104 @@ h1, h2, h3, h4, h5, h6 {
   display: none;
 }
 
+/* Quick Add Autocomplete Dropdown */
+.quick-add-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 600px;
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  margin-bottom: var(--space-sm);
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--transition-fast);
+  pointer-events: auto;
+}
+
+.quick-add-autocomplete.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.quick-add-hint-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.quick-add-hint-item:hover,
+.quick-add-hint-item.selected {
+  background: var(--bg-secondary);
+}
+
+.quick-add-hint-item.selected {
+  background: var(--dreamcast-orange);
+  color: var(--text-inverse);
+}
+
+.quick-add-hint-icon {
+  font-size: var(--text-lg);
+  width: 24px;
+  text-align: center;
+}
+
+.quick-add-hint-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.quick-add-hint-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.quick-add-hint-item.selected .quick-add-hint-value {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Syntax hint bar */
+.quick-add-syntax {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) 0;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  pointer-events: auto;
+}
+
+.quick-add-wrapper:focus-within + .quick-add-autocomplete + .quick-add-syntax,
+.quick-add-wrapper:focus-within ~ .quick-add-syntax {
+  opacity: 1;
+}
+
+.syntax-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.syntax-item .kbd {
+  font-size: 9px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0 4px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .quick-add-container {
@@ -1632,6 +1730,10 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .quick-add-hints {
+    display: none;
+  }
+
+  .quick-add-syntax {
     display: none;
   }
 }
