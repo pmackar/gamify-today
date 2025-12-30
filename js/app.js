@@ -646,16 +646,17 @@ let commandPaletteSelectedIndex = 0;
 // Command definitions for palette
 const commands = [
   // Navigation
-  { id: 'go-inbox', title: 'Go to Inbox', description: 'View all tasks', icon: '📥', shortcut: ['G', 'I'], category: 'Navigation', action: () => setActiveView('inbox') },
-  { id: 'go-today', title: 'Go to Today', description: 'Tasks due today', icon: '📅', shortcut: ['G', 'T'], category: 'Navigation', action: () => setActiveView('today') },
-  { id: 'go-upcoming', title: 'Go to Upcoming', description: 'Future tasks', icon: '📆', shortcut: ['G', 'U'], category: 'Navigation', action: () => setActiveView('upcoming') },
-  { id: 'go-completed', title: 'Go to Completed', description: 'Finished tasks', icon: '✅', shortcut: ['G', 'D'], category: 'Navigation', action: () => setActiveView('completed') },
-  { id: 'go-stats', title: 'Go to Stats', description: 'View achievements', icon: '📊', shortcut: ['G', 'S'], category: 'Navigation', action: () => showStatsModal() },
+  { id: 'go-inbox', title: 'Go to Inbox', description: 'View all tasks', icon: '📥', shortcut: ['1', 'I'], category: 'Navigation', action: () => setActiveView('inbox') },
+  { id: 'go-today', title: 'Go to Today', description: 'Tasks due today', icon: '📅', shortcut: ['2', 'T'], category: 'Navigation', action: () => setActiveView('today') },
+  { id: 'go-upcoming', title: 'Go to Upcoming', description: 'Future tasks', icon: '📆', shortcut: ['3', 'U'], category: 'Navigation', action: () => setActiveView('upcoming') },
+  { id: 'go-completed', title: 'Go to Completed', description: 'Finished tasks', icon: '✅', shortcut: ['4', 'D'], category: 'Navigation', action: () => setActiveView('completed') },
+  { id: 'go-stats', title: 'Go to Stats', description: 'View achievements', icon: '📊', shortcut: ['5', 'S'], category: 'Navigation', action: () => showStatsModal() },
 
   // Create
-  { id: 'new-task', title: 'New Task', description: 'Create a new task', icon: '➕', shortcut: ['N'], category: 'Create', action: () => showTaskModal() },
-  { id: 'new-project', title: 'New Project', description: 'Create a new project', icon: '📁', shortcut: ['C', 'P'], category: 'Create', action: () => showProjectModal() },
-  { id: 'new-category', title: 'New Category', description: 'Create a new category', icon: '🏷️', shortcut: ['C', 'C'], category: 'Create', action: () => showCategoryModal() },
+  { id: 'quick-add', title: 'Quick Add Task', description: 'Focus quick add input', icon: '✨', shortcut: ['N'], category: 'Create', action: () => focusQuickAdd() },
+  { id: 'new-task', title: 'Full Task Modal', description: 'Open task form', icon: '➕', shortcut: ['A'], category: 'Create', action: () => showTaskModal() },
+  { id: 'new-project', title: 'New Project', description: 'Create a new project', icon: '📁', shortcut: ['P'], category: 'Create', action: () => showProjectModal() },
+  { id: 'new-category', title: 'New Category', description: 'Create a new category', icon: '🏷️', shortcut: ['C'], category: 'Create', action: () => showCategoryModal() },
 
   // Actions
   { id: 'show-shortcuts', title: 'Keyboard Shortcuts', description: 'Show all shortcuts', icon: '⌨️', shortcut: ['?'], category: 'Help', action: () => showShortcutsModal() },
@@ -965,47 +966,61 @@ function handleKeydown(e) {
   // Don't process shortcuts when modal is open (except escape which is handled above)
   if (isModalOpen()) return;
 
-  // Handle pending key sequences
-  if (pendingKey) {
-    clearPendingKey();
-
-    // G + key sequences (navigation)
-    if (pendingKey === 'g') {
-      switch (key) {
-        case 'i': setActiveView('inbox'); break;
-        case 't': setActiveView('today'); break;
-        case 'u': setActiveView('upcoming'); break;
-        case 'd': setActiveView('completed'); break;
-        case 's': showStatsModal(); break;
-      }
-      return;
-    }
-
-    // C + key sequences (create)
-    if (pendingKey === 'c') {
-      switch (key) {
-        case 'p': showProjectModal(); break;
-        case 'c': showCategoryModal(); break;
-      }
-      return;
-    }
-    return;
-  }
-
-  // Start key sequences
-  if (key === 'g' || key === 'c') {
-    pendingKey = key;
-    showPendingKey(key);
-    pendingKeyTimeout = setTimeout(clearPendingKey, 1500);
-    return;
-  }
-
-  // Single key shortcuts
+  // Single key shortcuts (no sequences needed)
   switch (key) {
+    // Navigation - single keys
+    case '1':
+    case 'i':
+      e.preventDefault();
+      setActiveView('inbox');
+      break;
+
+    case '2':
+    case 't':
+      e.preventDefault();
+      setActiveView('today');
+      break;
+
+    case '3':
+    case 'u':
+      e.preventDefault();
+      setActiveView('upcoming');
+      break;
+
+    case '4':
+    case 'd':
+      e.preventDefault();
+      setActiveView('completed');
+      break;
+
+    case '5':
+    case 's':
+      e.preventDefault();
+      showStatsModal();
+      break;
+
     // New task - focus quick add input
     case 'n':
       e.preventDefault();
       focusQuickAdd();
+      break;
+
+    // Full task modal
+    case 'a':
+      e.preventDefault();
+      showTaskModal();
+      break;
+
+    // Create project
+    case 'p':
+      e.preventDefault();
+      showProjectModal();
+      break;
+
+    // Create category
+    case 'c':
+      e.preventDefault();
+      showCategoryModal();
       break;
 
     // Show shortcuts help
@@ -1036,7 +1051,7 @@ function handleKeydown(e) {
       }
       break;
 
-    case 'e': // Edit
+    case 'e': // Edit selected task
       e.preventDefault();
       const taskToEdit = getSelectedTask();
       if (taskToEdit) {
