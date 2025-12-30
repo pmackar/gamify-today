@@ -6,9 +6,30 @@ let tasks = [];
 let projects = [];
 let categories = [];
 let currentView = 'inbox';
+let currentTheme = 'light';
+
+// Theme Management
+function setTheme(theme) {
+  currentTheme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('gamify-theme', theme);
+
+  // Update pill states
+  document.querySelectorAll('.theme-pill').forEach(pill => {
+    pill.classList.toggle('active', pill.dataset.theme === theme);
+  });
+}
+
+function loadSavedTheme() {
+  const savedTheme = localStorage.getItem('gamify-theme') || 'light';
+  setTheme(savedTheme);
+}
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+  // Load saved theme immediately
+  loadSavedTheme();
+
   // Check authentication
   const token = localStorage.getItem('token');
   if (!token) {
