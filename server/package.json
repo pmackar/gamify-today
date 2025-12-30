@@ -1,0 +1,24 @@
+{
+  "name": "gamify-today-server",
+  "version": "1.0.0",
+  "description": "Backend for gamify.today - a gamified todo application",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "db:init": "psql $DATABASE_URL -f src/db/schema.sql",
+    "db:seed": "psql $DATABASE_URL -f src/db/seed.sql"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>gamify.today - Level Up Your Productivity</title>
+  <meta name="description" content="A gamified todo app that turns your tasks into XP. Complete tasks, earn achievements, and level up your productivity.">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+</head>
+<body>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-badge">NEW: Achievement System</div>
+        <h1 class="hero-title">
+          Turn Tasks Into <span>XP</span>
+        </h1>
+        <p class="hero-subtitle">
+          Complete tasks. Earn experience. Level up your productivity.
+          The gamified todo app that makes getting things done actually fun.
+        </p>
+        <div class="hero-cta">
+          <button class="btn btn-bevel btn-lg" onclick="showAuthModal('register')">
+            Start Playing
+          </button>
+          <button class="btn btn-outline btn-lg" onclick="showAuthModal('login')">
+            Sign In
+          </button>
+        </div>
+
+        <!-- Stats Preview -->
+        <div class="stats-grid" style="margin-top: var(--space-2xl);">
+          <div class="stat-card" style="background: rgba(255,255,255,0.05);">
+            <div class="stat-icon">⚡</div>
+            <div class="stat-value" style="color: var(--text-inverse);">XP</div>
+            <div class="stat-label">Earn XP for every task</div>
+          </div>
+          <div class="stat-card" style="background: rgba(255,255,255,0.05);">
+            <div class="stat-icon">🔥</div>
+            <div class="stat-value" style="color: var(--text-inverse);">STREAKS</div>
+            <div class="stat-label">Build daily streaks</div>
+          </div>
+          <div class="stat-card" style="background: rgba(255,255,255,0.05);">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value" style="color: var(--text-inverse);">BADGES</div>
+            <div class="stat-label">Unlock achievements</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Auth Modal -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="authModalTitle">Sign In</h3>
+        <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Login Form -->
+        <form id="loginForm" class="flex flex-col gap-md">
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" id="loginEmail" placeholder="you@example.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" required>
+          </div>
+          <div id="loginError" class="text-sm" style="color: var(--error); display: none;"></div>
+          <button type="submit" class="btn btn-primary btn-lg w-full">
+            Sign In
+          </button>
+          <p class="text-center text-sm" style="color: var(--text-secondary);">
+            Don't have an account?
+            <a href="#" onclick="showAuthModal('register'); return false;">Sign up</a>
+          </p>
+        </form>
+
+        <!-- Register Form -->
+        <form id="registerForm" class="flex flex-col gap-md" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" class="form-input" id="registerUsername" placeholder="coolgamer123" required minlength="3" maxlength="50">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" id="registerEmail" placeholder="you@example.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-input" id="registerPassword" placeholder="••••••••" required minlength="6">
+          </div>
+          <div id="registerError" class="text-sm" style="color: var(--error); display: none;"></div>
+          <button type="submit" class="btn btn-primary btn-lg w-full">
+            Create Account
+          </button>
+          <p class="text-center text-sm" style="color: var(--text-secondary);">
+            Already have an account?
+            <a href="#" onclick="showAuthModal('login'); return false;">Sign in</a>
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // API Configuration
+    const API_URL = 'http://localhost:3001/api';
+
+    // Check if already logged in
+    const token = localStorage.getItem('token');
+    if (token) {
+      window.location.href = 'app.html';
+    }
+
+    // Create floating particles
+    function createParticles() {
+      const container = document.getElementById('particles');
+      for (let i = 0; i < 30; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 15 + 's';
+        particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+        container.appendChild(particle);
+      }
+    }
+    createParticles();
+
+    // Auth Modal
+    function showAuthModal(type) {
+      const modal = document.getElementById('authModal');
+      const title = document.getElementById('authModalTitle');
+      const loginForm = document.getElementById('loginForm');
+      const registerForm = document.getElementById('registerForm');
+
+      modal.classList.add('active');
+
+      if (type === 'login') {
+        title.textContent = 'Sign In';
+        loginForm.style.display = 'flex';
+        registerForm.style.display = 'none';
+      } else {
+        title.textContent = 'Create Account';
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'flex';
+      }
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authModal').classList.remove('active');
+    }
+
+    // Close modal on overlay click
+    document.getElementById('authModal').addEventListener('click', (e) => {
+      if (e.target.id === 'authModal') {
+        closeAuthModal();
+      }
+    });
+
+    // Login form submission
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('loginError');
+
+      try {
+        const response = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          errorDiv.textContent = data.error || 'Login failed';
+          errorDiv.style.display = 'block';
+          return;
+        }
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = 'app.html';
+      } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    });
+
+    // Register form submission
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('registerUsername').value;
+      const email = document.getElementById('registerEmail').value;
+      const password = document.getElementById('registerPassword').value;
+      const errorDiv = document.getElementById('registerError');
+
+      try {
+        const response = await fetch(`${API_URL}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          errorDiv.textContent = data.error || 'Registration failed';
+          errorDiv.style.display = 'block';
+          return;
+        }
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = 'app.html';
+      } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

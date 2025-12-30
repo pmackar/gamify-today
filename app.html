@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>gamify.today - Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">gamify.today</div>
+    </div>
+
+    <!-- XP Display -->
+    <div style="padding: var(--space-md);">
+      <div class="xp-display">
+        <div class="level-badge">
+          <span class="level-number" id="userLevel">1</span>
+        </div>
+        <div class="xp-bar-container">
+          <div class="xp-bar-label">
+            <span id="xpCurrent">0</span> / <span id="xpToNext">100</span> XP
+          </div>
+          <div class="xp-bar">
+            <div class="xp-bar-fill" id="xpBarFill" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Streak -->
+      <div class="streak-display" id="streakDisplay" style="margin-top: var(--space-md);">
+        <span class="streak-icon">🔥</span>
+        <div>
+          <div class="streak-count" id="streakCount">0</div>
+          <div class="streak-label">day streak</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <!-- Main Views -->
+      <div class="nav-section">
+        <div class="nav-section-title">Views</div>
+        <div class="nav-item active" data-view="inbox" onclick="setActiveView('inbox')">
+          <span class="nav-item-icon">📥</span>
+          <span>Inbox</span>
+          <span class="nav-item-count" id="inboxCount">0</span>
+        </div>
+        <div class="nav-item" data-view="today" onclick="setActiveView('today')">
+          <span class="nav-item-icon">📅</span>
+          <span>Today</span>
+          <span class="nav-item-count" id="todayCount">0</span>
+        </div>
+        <div class="nav-item" data-view="upcoming" onclick="setActiveView('upcoming')">
+          <span class="nav-item-icon">📆</span>
+          <span>Upcoming</span>
+        </div>
+        <div class="nav-item" data-view="completed" onclick="setActiveView('completed')">
+          <span class="nav-item-icon">✅</span>
+          <span>Completed</span>
+        </div>
+      </div>
+
+      <!-- Projects -->
+      <div class="nav-section">
+        <div class="nav-section-title flex justify-between items-center">
+          <span>Projects</span>
+          <button class="btn btn-ghost btn-sm" onclick="showProjectModal()">+</button>
+        </div>
+        <div id="projectsList"></div>
+      </div>
+
+      <!-- Categories -->
+      <div class="nav-section">
+        <div class="nav-section-title flex justify-between items-center">
+          <span>Categories</span>
+          <button class="btn btn-ghost btn-sm" onclick="showCategoryModal()">+</button>
+        </div>
+        <div id="categoriesList"></div>
+      </div>
+    </nav>
+
+    <!-- User Menu -->
+    <div style="padding: var(--space-md); border-top: 1px solid var(--bg-tertiary);">
+      <div class="nav-item" onclick="showStatsModal()">
+        <span class="nav-item-icon">📊</span>
+        <span>Stats & Achievements</span>
+      </div>
+      <div class="nav-item" onclick="logout()">
+        <span class="nav-item-icon">👋</span>
+        <span>Sign Out</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <header class="content-header">
+      <div>
+        <h1 class="content-title" id="viewTitle">Inbox</h1>
+        <p class="text-sm" style="color: var(--text-secondary);" id="viewSubtitle">All your tasks</p>
+      </div>
+      <div class="flex gap-sm">
+        <button class="btn btn-primary" onclick="showTaskModal()">
+          + Add Task
+        </button>
+      </div>
+    </header>
+
+    <div class="content-body">
+      <!-- Task List -->
+      <div id="taskList" class="flex flex-col gap-sm"></div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="text-center hidden" style="padding: var(--space-3xl);">
+        <div style="font-size: 48px; margin-bottom: var(--space-md);">🎮</div>
+        <h3 style="margin-bottom: var(--space-sm);">No tasks yet</h3>
+        <p style="color: var(--text-secondary); margin-bottom: var(--space-lg);">Add your first task to start earning XP!</p>
+        <button class="btn btn-primary" onclick="showTaskModal()">+ Add Task</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Task Modal -->
+  <div class="modal-overlay" id="taskModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="taskModalTitle">Add Task</h3>
+        <button class="modal-close" onclick="closeTaskModal()">✕</button>
+      </div>
+      <form id="taskForm" class="modal-body flex flex-col gap-md">
+        <input type="hidden" id="taskId">
+
+        <div class="form-group">
+          <label class="form-label">Task Title *</label>
+          <input type="text" class="form-input" id="taskTitle" placeholder="What needs to be done?" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="taskDescription" placeholder="Add details..." rows="2"></textarea>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+          <div class="form-group">
+            <label class="form-label">Due Date</label>
+            <input type="datetime-local" class="form-input" id="taskDueDate">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Priority</label>
+            <select class="form-select" id="taskPriority">
+              <option value="">None</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+          <div class="form-group">
+            <label class="form-label">Tier (XP Multiplier)</label>
+            <select class="form-select" id="taskTier">
+              <option value="tier3">Quick (1x XP)</option>
+              <option value="tier2">Standard (2x XP)</option>
+              <option value="tier1">Major (3x XP)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Difficulty</label>
+            <select class="form-select" id="taskDifficulty">
+              <option value="easy">Easy (1x)</option>
+              <option value="medium" selected>Medium (1.5x)</option>
+              <option value="hard">Hard (2x)</option>
+              <option value="epic">Epic (3x)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+          <div class="form-group">
+            <label class="form-label">Project</label>
+            <select class="form-select" id="taskProject">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select class="form-select" id="taskCategory">
+              <option value="">None</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- XP Preview -->
+        <div style="background: var(--bg-secondary); padding: var(--space-md); border-radius: var(--radius-md); text-align: center;">
+          <span style="color: var(--text-secondary);">Estimated XP:</span>
+          <span class="font-pixel" style="color: var(--xp-gold); margin-left: var(--space-sm);" id="xpPreview">+10 XP</span>
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTask()">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project Modal -->
+  <div class="modal-overlay" id="projectModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Project</h3>
+        <button class="modal-close" onclick="closeProjectModal()">✕</button>
+      </div>
+      <form id="projectForm" class="modal-body flex flex-col gap-md">
+        <input type="hidden" id="projectId">
+        <div class="form-group">
+          <label class="form-label">Project Name *</label>
+          <input type="text" class="form-input" id="projectName" placeholder="My Project" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="projectDescription" placeholder="Project details..." rows="2"></textarea>
+        </div>
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+          <div class="form-group">
+            <label class="form-label">Start Date</label>
+            <input type="date" class="form-input" id="projectStartDate">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Due Date</label>
+            <input type="date" class="form-input" id="projectDueDate">
+          </div>
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeProjectModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveProject()">Save Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category Modal -->
+  <div class="modal-overlay" id="categoryModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Category</h3>
+        <button class="modal-close" onclick="closeCategoryModal()">✕</button>
+      </div>
+      <form id="categoryForm" class="modal-body flex flex-col gap-md">
+        <input type="hidden" id="categoryId">
+        <div class="form-group">
+          <label class="form-label">Category Name *</label>
+          <input type="text" class="form-input" id="categoryName" placeholder="Work, Personal, etc." required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <input type="color" class="form-input" id="categoryColor" value="#ff6b35" style="height: 44px; padding: 4px;">
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCategoryModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCategory()">Save Category</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Modal -->
+  <div class="modal-overlay" id="statsModal">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Stats & Achievements</h3>
+        <button class="modal-close" onclick="closeStatsModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Stats Grid -->
+        <div class="stats-grid" style="margin-bottom: var(--space-lg);">
+          <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-value" id="statTotalTasks">0</div>
+            <div class="stat-label">Tasks Completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🔥</div>
+            <div class="stat-value" id="statLongestStreak">0</div>
+            <div class="stat-label">Longest Streak</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">⏰</div>
+            <div class="stat-value" id="statOnTime">0</div>
+            <div class="stat-label">On-Time Tasks</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-value" id="statWeekXP">0</div>
+            <div class="stat-label">XP This Week</div>
+          </div>
+        </div>
+
+        <!-- Achievements -->
+        <h4 style="margin-bottom: var(--space-md);">Achievements (<span id="achievementProgress">0</span>%)</h4>
+        <div id="achievementsList" class="flex flex-col gap-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="js/api.js"></script>
+  <script src="js/gamification.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
