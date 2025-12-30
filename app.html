@@ -186,6 +186,9 @@
 
     <!-- Quick Add Floating Input -->
     <div class="quick-add-container" id="quickAddContainer">
+      <!-- Autocomplete dropdown (above input) -->
+      <div class="quick-add-autocomplete" id="quickAddAutocomplete"></div>
+
       <div class="quick-add-wrapper">
         <span class="quick-add-icon">✨</span>
         <input
@@ -195,25 +198,41 @@
           placeholder="Press N to add a task..."
           autocomplete="off"
         >
-        <div class="quick-add-hints">
-          <span class="kbd">N</span>
-          <span class="quick-add-hint-text">to focus</span>
-          <span class="kbd">↵</span>
-          <span class="quick-add-hint-text">to add</span>
-          <span class="kbd">Esc</span>
-          <span class="quick-add-hint-text">to cancel</span>
-        </div>
       </div>
-      <!-- Autocomplete dropdown -->
-      <div class="quick-add-autocomplete" id="quickAddAutocomplete"></div>
-      <!-- Syntax hint bar -->
-      <div class="quick-add-syntax">
-        <span class="syntax-item"><span class="kbd">@</span> project</span>
-        <span class="syntax-item"><span class="kbd">#</span> category</span>
-        <span class="syntax-item"><span class="kbd">!</span> priority</span>
-        <span class="syntax-item"><span class="kbd">~</span> difficulty</span>
-        <span class="syntax-item"><span class="kbd">^</span> tier</span>
-        <span class="syntax-item">today / tomorrow / mon-sun</span>
+
+      <!-- Keyboard hints below input -->
+      <div class="quick-add-hints-below">
+        <div class="quick-add-hint-group">
+          <span class="kbd">↵</span>
+          <span class="hint-label">add task</span>
+        </div>
+        <div class="quick-add-hint-group">
+          <span class="kbd">⌘</span><span class="kbd">↵</span>
+          <span class="hint-label">full modal</span>
+        </div>
+        <div class="quick-add-hint-group">
+          <span class="kbd">Esc</span>
+          <span class="hint-label">cancel</span>
+        </div>
+        <span class="hint-divider">|</span>
+        <div class="quick-add-hint-group">
+          <span class="kbd">@</span>
+          <span class="hint-label">project</span>
+        </div>
+        <div class="quick-add-hint-group">
+          <span class="kbd">#</span>
+          <span class="hint-label">category</span>
+        </div>
+        <div class="quick-add-hint-group">
+          <span class="kbd">!</span>
+          <span class="hint-label">priority</span>
+        </div>
+        <div class="quick-add-hint-group">
+          <span class="kbd">~</span>
+          <span class="hint-label">difficulty</span>
+        </div>
+        <span class="hint-divider">|</span>
+        <span class="hint-label" style="opacity: 0.7;">today / tomorrow / mon-sun</span>
       </div>
     </div>
   </main>
