@@ -560,15 +560,430 @@ function logout() {
   window.location.href = 'index.html';
 }
 
-// Close modals on escape key
-document.addEventListener('keydown', (e) => {
+// ========================================
+// Keyboard Shortcuts System
+// ========================================
+
+// Keyboard state
+let pendingKey = null;
+let pendingKeyTimeout = null;
+let selectedTaskIndex = -1;
+let commandPaletteSelectedIndex = 0;
+
+// Command definitions for palette
+const commands = [
+  // Navigation
+  { id: 'go-inbox', title: 'Go to Inbox', description: 'View all tasks', icon: '📥', shortcut: ['G', 'I'], category: 'Navigation', action: () => setActiveView('inbox') },
+  { id: 'go-today', title: 'Go to Today', description: 'Tasks due today', icon: '📅', shortcut: ['G', 'T'], category: 'Navigation', action: () => setActiveView('today') },
+  { id: 'go-upcoming', title: 'Go to Upcoming', description: 'Future tasks', icon: '📆', shortcut: ['G', 'U'], category: 'Navigation', action: () => setActiveView('upcoming') },
+  { id: 'go-completed', title: 'Go to Completed', description: 'Finished tasks', icon: '✅', shortcut: ['G', 'D'], category: 'Navigation', action: () => setActiveView('completed') },
+  { id: 'go-stats', title: 'Go to Stats', description: 'View achievements', icon: '📊', shortcut: ['G', 'S'], category: 'Navigation', action: () => showStatsModal() },
+
+  // Create
+  { id: 'new-task', title: 'New Task', description: 'Create a new task', icon: '➕', shortcut: ['N'], category: 'Create', action: () => showTaskModal() },
+  { id: 'new-project', title: 'New Project', description: 'Create a new project', icon: '📁', shortcut: ['C', 'P'], category: 'Create', action: () => showProjectModal() },
+  { id: 'new-category', title: 'New Category', description: 'Create a new category', icon: '🏷️', shortcut: ['C', 'C'], category: 'Create', action: () => showCategoryModal() },
+
+  // Actions
+  { id: 'show-shortcuts', title: 'Keyboard Shortcuts', description: 'Show all shortcuts', icon: '⌨️', shortcut: ['?'], category: 'Help', action: () => showShortcutsModal() },
+];
+
+// Check if focus is on an input element
+function isInputFocused() {
+  const activeElement = document.activeElement;
+  const tagName = activeElement?.tagName?.toLowerCase();
+  return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || activeElement?.isContentEditable;
+}
+
+// Check if any modal is open
+function isModalOpen() {
+  return document.querySelector('.modal-overlay.active') !== null;
+}
+
+// Check if command palette is open
+function isCommandPaletteOpen() {
+  return document.getElementById('commandPalette')?.classList.contains('active');
+}
+
+// Show pending key indicator
+function showPendingKey(key) {
+  const indicator = document.getElementById('pendingKeyIndicator');
+  const display = document.getElementById('pendingKeyDisplay');
+  display.textContent = key.toUpperCase();
+  indicator.classList.add('visible');
+}
+
+// Hide pending key indicator
+function hidePendingKey() {
+  const indicator = document.getElementById('pendingKeyIndicator');
+  indicator.classList.remove('visible');
+}
+
+// Clear pending key state
+function clearPendingKey() {
+  pendingKey = null;
+  if (pendingKeyTimeout) {
+    clearTimeout(pendingKeyTimeout);
+    pendingKeyTimeout = null;
+  }
+  hidePendingKey();
+}
+
+// Get visible task cards
+function getTaskCards() {
+  return Array.from(document.querySelectorAll('.task-card'));
+}
+
+// Update task selection UI
+function updateTaskSelection() {
+  const taskCards = getTaskCards();
+  taskCards.forEach((card, index) => {
+    card.classList.toggle('keyboard-selected', index === selectedTaskIndex);
+  });
+
+  // Scroll selected task into view
+  if (selectedTaskIndex >= 0 && taskCards[selectedTaskIndex]) {
+    taskCards[selectedTaskIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+// Select next task
+function selectNextTask() {
+  const taskCards = getTaskCards();
+  if (taskCards.length === 0) return;
+
+  selectedTaskIndex = Math.min(selectedTaskIndex + 1, taskCards.length - 1);
+  if (selectedTaskIndex < 0) selectedTaskIndex = 0;
+  updateTaskSelection();
+}
+
+// Select previous task
+function selectPreviousTask() {
+  const taskCards = getTaskCards();
+  if (taskCards.length === 0) return;
+
+  if (selectedTaskIndex < 0) selectedTaskIndex = 0;
+  else selectedTaskIndex = Math.max(selectedTaskIndex - 1, 0);
+  updateTaskSelection();
+}
+
+// Get selected task
+function getSelectedTask() {
+  const taskCards = getTaskCards();
+  if (selectedTaskIndex < 0 || selectedTaskIndex >= taskCards.length) return null;
+
+  const taskId = taskCards[selectedTaskIndex]?.dataset.id;
+  return tasks.find(t => t.id === taskId);
+}
+
+// Command Palette
+function showCommandPalette() {
+  const palette = document.getElementById('commandPalette');
+  const input = document.getElementById('commandPaletteInput');
+  palette.classList.add('active');
+  input.value = '';
+  input.focus();
+  commandPaletteSelectedIndex = 0;
+  renderCommandPalette('');
+}
+
+function closeCommandPalette() {
+  document.getElementById('commandPalette').classList.remove('active');
+}
+
+function renderCommandPalette(query) {
+  const list = document.getElementById('commandPaletteList');
+  const lowerQuery = query.toLowerCase();
+
+  // Filter commands
+  const filteredCommands = commands.filter(cmd =>
+    cmd.title.toLowerCase().includes(lowerQuery) ||
+    cmd.description.toLowerCase().includes(lowerQuery) ||
+    cmd.category.toLowerCase().includes(lowerQuery)
+  );
+
+  if (filteredCommands.length === 0) {
+    list.innerHTML = `
+      <div class="command-palette-empty">
+        <div class="command-palette-empty-icon">🔍</div>
+        <div>No commands found</div>
+      </div>
+    `;
+    return;
+  }
+
+  // Group by category
+  const grouped = {};
+  filteredCommands.forEach(cmd => {
+    if (!grouped[cmd.category]) grouped[cmd.category] = [];
+    grouped[cmd.category].push(cmd);
+  });
+
+  // Render
+  let html = '';
+  let globalIndex = 0;
+
+  Object.entries(grouped).forEach(([category, cmds]) => {
+    html += `<div class="command-palette-section">
+      <div class="command-palette-section-title">${category}</div>`;
+
+    cmds.forEach(cmd => {
+      const isSelected = globalIndex === commandPaletteSelectedIndex;
+      const shortcutHtml = cmd.shortcut.map(k => `<span class="kbd">${k}</span>`).join('');
+
+      html += `
+        <div class="command-palette-item ${isSelected ? 'selected' : ''}"
+             data-command-id="${cmd.id}"
+             data-index="${globalIndex}">
+          <div class="command-item-icon">${cmd.icon}</div>
+          <div class="command-item-content">
+            <div class="command-item-title">${cmd.title}</div>
+            <div class="command-item-description">${cmd.description}</div>
+          </div>
+          <div class="command-item-shortcut">${shortcutHtml}</div>
+        </div>
+      `;
+      globalIndex++;
+    });
+
+    html += '</div>';
+  });
+
+  list.innerHTML = html;
+
+  // Add click handlers
+  list.querySelectorAll('.command-palette-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const cmdId = item.dataset.commandId;
+      executeCommand(cmdId);
+    });
+    item.addEventListener('mouseenter', () => {
+      commandPaletteSelectedIndex = parseInt(item.dataset.index);
+      renderCommandPalette(document.getElementById('commandPaletteInput').value);
+    });
+  });
+}
+
+function executeCommand(commandId) {
+  const command = commands.find(c => c.id === commandId);
+  if (command) {
+    closeCommandPalette();
+    command.action();
+  }
+}
+
+function handleCommandPaletteKeydown(e) {
+  const input = document.getElementById('commandPaletteInput');
+  const query = input.value.toLowerCase();
+  const filteredCommands = commands.filter(cmd =>
+    cmd.title.toLowerCase().includes(query) ||
+    cmd.description.toLowerCase().includes(query) ||
+    cmd.category.toLowerCase().includes(query)
+  );
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    commandPaletteSelectedIndex = Math.min(commandPaletteSelectedIndex + 1, filteredCommands.length - 1);
+    renderCommandPalette(input.value);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    commandPaletteSelectedIndex = Math.max(commandPaletteSelectedIndex - 1, 0);
+    renderCommandPalette(input.value);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (filteredCommands[commandPaletteSelectedIndex]) {
+      executeCommand(filteredCommands[commandPaletteSelectedIndex].id);
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeCommandPalette();
+  }
+}
+
+// Shortcuts Modal
+function showShortcutsModal() {
+  document.getElementById('shortcutsModal').classList.add('active');
+}
+
+function closeShortcutsModal() {
+  document.getElementById('shortcutsModal').classList.remove('active');
+}
+
+// Main keyboard handler
+function handleKeydown(e) {
+  const key = e.key.toLowerCase();
+  const isMeta = e.metaKey || e.ctrlKey;
+
+  // Command palette is open - handle its own keys
+  if (isCommandPaletteOpen()) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCommandPalette();
+      return;
+    }
+    // Let the palette input handle other keys
+    return;
+  }
+
+  // Cmd/Ctrl+K - Command Palette (works everywhere)
+  if (isMeta && key === 'k') {
+    e.preventDefault();
+    showCommandPalette();
+    return;
+  }
+
+  // Cmd/Ctrl+Enter - Save in modal
+  if (isMeta && e.key === 'Enter') {
+    if (document.getElementById('taskModal').classList.contains('active')) {
+      e.preventDefault();
+      saveTask();
+      return;
+    }
+    if (document.getElementById('projectModal').classList.contains('active')) {
+      e.preventDefault();
+      saveProject();
+      return;
+    }
+    if (document.getElementById('categoryModal').classList.contains('active')) {
+      e.preventDefault();
+      saveCategory();
+      return;
+    }
+  }
+
+  // Escape - Close modals
   if (e.key === 'Escape') {
     closeTaskModal();
     closeProjectModal();
     closeCategoryModal();
     closeStatsModal();
+    closeShortcutsModal();
+    clearPendingKey();
+    selectedTaskIndex = -1;
+    updateTaskSelection();
+    return;
+  }
+
+  // Don't process shortcuts when typing in inputs
+  if (isInputFocused()) return;
+
+  // Don't process shortcuts when modal is open (except escape which is handled above)
+  if (isModalOpen()) return;
+
+  // Handle pending key sequences
+  if (pendingKey) {
+    clearPendingKey();
+
+    // G + key sequences (navigation)
+    if (pendingKey === 'g') {
+      switch (key) {
+        case 'i': setActiveView('inbox'); break;
+        case 't': setActiveView('today'); break;
+        case 'u': setActiveView('upcoming'); break;
+        case 'd': setActiveView('completed'); break;
+        case 's': showStatsModal(); break;
+      }
+      return;
+    }
+
+    // C + key sequences (create)
+    if (pendingKey === 'c') {
+      switch (key) {
+        case 'p': showProjectModal(); break;
+        case 'c': showCategoryModal(); break;
+      }
+      return;
+    }
+    return;
+  }
+
+  // Start key sequences
+  if (key === 'g' || key === 'c') {
+    pendingKey = key;
+    showPendingKey(key);
+    pendingKeyTimeout = setTimeout(clearPendingKey, 1500);
+    return;
+  }
+
+  // Single key shortcuts
+  switch (key) {
+    // New task
+    case 'n':
+      e.preventDefault();
+      showTaskModal();
+      break;
+
+    // Show shortcuts help
+    case '?':
+      e.preventDefault();
+      showShortcutsModal();
+      break;
+
+    // Task navigation - vim style
+    case 'j':
+    case 'arrowdown':
+      e.preventDefault();
+      selectNextTask();
+      break;
+
+    case 'k':
+    case 'arrowup':
+      e.preventDefault();
+      selectPreviousTask();
+      break;
+
+    // Task actions (when task is selected)
+    case ' ': // Space - toggle complete
+      e.preventDefault();
+      const taskToToggle = getSelectedTask();
+      if (taskToToggle) {
+        toggleTaskComplete(taskToToggle.id, !taskToToggle.is_completed);
+      }
+      break;
+
+    case 'e': // Edit
+      e.preventDefault();
+      const taskToEdit = getSelectedTask();
+      if (taskToEdit) {
+        editTask(taskToEdit.id);
+      }
+      break;
+
+    case 'backspace':
+    case 'delete':
+      e.preventDefault();
+      const taskToDelete = getSelectedTask();
+      if (taskToDelete) {
+        deleteTask(taskToDelete.id);
+      }
+      break;
+  }
+}
+
+// Initialize keyboard shortcuts
+document.addEventListener('keydown', handleKeydown);
+
+// Command palette input handler
+document.getElementById('commandPaletteInput')?.addEventListener('input', (e) => {
+  commandPaletteSelectedIndex = 0;
+  renderCommandPalette(e.target.value);
+});
+
+document.getElementById('commandPaletteInput')?.addEventListener('keydown', handleCommandPaletteKeydown);
+
+// Close command palette on overlay click
+document.getElementById('commandPalette')?.addEventListener('click', (e) => {
+  if (e.target.id === 'commandPalette') {
+    closeCommandPalette();
   }
 });
+
+// Reset task selection when tasks change
+const originalRenderTasks = renderTasks;
+renderTasks = function() {
+  originalRenderTasks();
+  selectedTaskIndex = -1;
+};
 
 // Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {

@@ -48,19 +48,23 @@
           <span class="nav-item-icon">📥</span>
           <span>Inbox</span>
           <span class="nav-item-count" id="inboxCount">0</span>
+          <span class="shortcut-hint"><span class="kbd">G</span><span class="kbd">I</span></span>
         </div>
         <div class="nav-item" data-view="today" onclick="setActiveView('today')">
           <span class="nav-item-icon">📅</span>
           <span>Today</span>
           <span class="nav-item-count" id="todayCount">0</span>
+          <span class="shortcut-hint"><span class="kbd">G</span><span class="kbd">T</span></span>
         </div>
         <div class="nav-item" data-view="upcoming" onclick="setActiveView('upcoming')">
           <span class="nav-item-icon">📆</span>
           <span>Upcoming</span>
+          <span class="shortcut-hint"><span class="kbd">G</span><span class="kbd">U</span></span>
         </div>
         <div class="nav-item" data-view="completed" onclick="setActiveView('completed')">
           <span class="nav-item-icon">✅</span>
           <span>Completed</span>
+          <span class="shortcut-hint"><span class="kbd">G</span><span class="kbd">D</span></span>
         </div>
       </div>
 
@@ -88,6 +92,12 @@
       <div class="nav-item" onclick="showStatsModal()">
         <span class="nav-item-icon">📊</span>
         <span>Stats & Achievements</span>
+        <span class="shortcut-hint"><span class="kbd">G</span><span class="kbd">S</span></span>
+      </div>
+      <div class="nav-item" onclick="showShortcutsModal()">
+        <span class="nav-item-icon">⌨️</span>
+        <span>Keyboard Shortcuts</span>
+        <span class="shortcut-hint"><span class="kbd">?</span></span>
       </div>
       <div class="nav-item" onclick="logout()">
         <span class="nav-item-icon">👋</span>
@@ -104,8 +114,9 @@
         <p class="text-sm" style="color: var(--text-secondary);" id="viewSubtitle">All your tasks</p>
       </div>
       <div class="flex gap-sm">
-        <button class="btn btn-primary" onclick="showTaskModal()">
+        <button class="btn btn-primary" onclick="showTaskModal()" title="Add new task (N)">
           + Add Task
+          <span class="shortcut-hint"><span class="kbd">N</span></span>
         </button>
       </div>
     </header>
@@ -202,8 +213,8 @@
         </div>
       </form>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveTask()">Save Task</button>
+        <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel <span class="shortcut-hint"><span class="kbd">Esc</span></span></button>
+        <button class="btn btn-primary" onclick="saveTask()">Save Task <span class="shortcut-hint"><span class="kbd">⌘</span><span class="kbd">↵</span></span></button>
       </div>
     </div>
   </div>
@@ -309,6 +320,132 @@
 
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Command Palette -->
+  <div class="command-palette-overlay" id="commandPalette">
+    <div class="command-palette">
+      <div class="command-palette-input-wrapper">
+        <span class="command-palette-icon">⌘</span>
+        <input type="text" class="command-palette-input" id="commandPaletteInput" placeholder="Type a command or search..." autocomplete="off">
+      </div>
+      <div class="command-palette-list" id="commandPaletteList"></div>
+      <div class="command-palette-footer">
+        <div class="command-palette-hints">
+          <span class="command-palette-hint"><span class="kbd">↑↓</span> Navigate</span>
+          <span class="command-palette-hint"><span class="kbd">↵</span> Select</span>
+          <span class="command-palette-hint"><span class="kbd">Esc</span> Close</span>
+        </div>
+        <span>Press <span class="kbd">?</span> for all shortcuts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shortcuts Help Modal -->
+  <div class="modal-overlay" id="shortcutsModal">
+    <div class="modal" style="max-width: 700px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Keyboard Shortcuts</h3>
+        <button class="modal-close" onclick="closeShortcutsModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcuts-grid">
+          <!-- Navigation -->
+          <div class="shortcuts-section">
+            <div class="shortcuts-section-title">Navigation</div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Go to Inbox</span>
+              <span class="shortcut-keys"><span class="kbd">G</span><span class="kbd">I</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Go to Today</span>
+              <span class="shortcut-keys"><span class="kbd">G</span><span class="kbd">T</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Go to Upcoming</span>
+              <span class="shortcut-keys"><span class="kbd">G</span><span class="kbd">U</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Go to Completed</span>
+              <span class="shortcut-keys"><span class="kbd">G</span><span class="kbd">D</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Go to Stats</span>
+              <span class="shortcut-keys"><span class="kbd">G</span><span class="kbd">S</span></span>
+            </div>
+          </div>
+
+          <!-- Task Actions -->
+          <div class="shortcuts-section">
+            <div class="shortcuts-section-title">Task Actions</div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">New task</span>
+              <span class="shortcut-keys"><span class="kbd">N</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Complete task</span>
+              <span class="shortcut-keys"><span class="kbd">Space</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Edit task</span>
+              <span class="shortcut-keys"><span class="kbd">E</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Delete task</span>
+              <span class="shortcut-keys"><span class="kbd">⌫</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Move up</span>
+              <span class="shortcut-keys"><span class="kbd">K</span> or <span class="kbd">↑</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Move down</span>
+              <span class="shortcut-keys"><span class="kbd">J</span> or <span class="kbd">↓</span></span>
+            </div>
+          </div>
+
+          <!-- General -->
+          <div class="shortcuts-section">
+            <div class="shortcuts-section-title">General</div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Command palette</span>
+              <span class="shortcut-keys"><span class="kbd">⌘</span><span class="kbd">K</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Show shortcuts</span>
+              <span class="shortcut-keys"><span class="kbd">?</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Close modal</span>
+              <span class="shortcut-keys"><span class="kbd">Esc</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">Save (in modal)</span>
+              <span class="shortcut-keys"><span class="kbd">⌘</span><span class="kbd">↵</span></span>
+            </div>
+          </div>
+
+          <!-- Create -->
+          <div class="shortcuts-section">
+            <div class="shortcuts-section-title">Create</div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">New project</span>
+              <span class="shortcut-keys"><span class="kbd">C</span><span class="kbd">P</span></span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-label">New category</span>
+              <span class="shortcut-keys"><span class="kbd">C</span><span class="kbd">C</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pending Key Indicator -->
+  <div class="pending-key-indicator" id="pendingKeyIndicator">
+    <span class="kbd" id="pendingKeyDisplay">G</span>
+    <span style="margin-left: 8px; color: var(--text-tertiary);">waiting for next key...</span>
+  </div>
 
   <script src="js/api.js"></script>
   <script src="js/gamification.js"></script>
