@@ -583,29 +583,62 @@
       <span class="mobile-nav-icon">📥</span>
       <span class="mobile-nav-label">Inbox</span>
     </button>
-    <button class="mobile-nav-item" data-view="today" onclick="mobileNavTo('today')">
-      <span class="mobile-nav-icon">📅</span>
-      <span class="mobile-nav-label">Today</span>
+    <button class="mobile-nav-item" data-view="projects" onclick="toggleMobilePanel('projects')">
+      <span class="mobile-nav-icon">📁</span>
+      <span class="mobile-nav-label">Projects</span>
     </button>
-    <button class="mobile-nav-fab" onclick="showTaskModal()">
-      <span>+</span>
+    <button class="mobile-nav-item" data-view="categories" onclick="toggleMobilePanel('categories')">
+      <span class="mobile-nav-icon">🏷️</span>
+      <span class="mobile-nav-label">Categories</span>
     </button>
-    <button class="mobile-nav-item" data-view="upcoming" onclick="mobileNavTo('upcoming')">
-      <span class="mobile-nav-icon">📆</span>
-      <span class="mobile-nav-label">Upcoming</span>
-    </button>
-    <button class="mobile-nav-item" data-view="browse" onclick="toggleBrowsePanel()">
-      <span class="mobile-nav-icon">☰</span>
-      <span class="mobile-nav-label">Browse</span>
+    <button class="mobile-nav-item" data-view="profile" onclick="toggleMobilePanel('profile')">
+      <span class="mobile-nav-icon">👤</span>
+      <span class="mobile-nav-label">Profile</span>
     </button>
   </nav>
 
-  <!-- Mobile Browse Panel (slides up) -->
-  <div class="mobile-browse-overlay" id="mobileBrowseOverlay" onclick="closeBrowsePanel()"></div>
-  <div class="mobile-browse-panel" id="mobileBrowsePanel">
+  <!-- Mobile Panel Overlay -->
+  <div class="mobile-browse-overlay" id="mobilePanelOverlay" onclick="closeMobilePanel()"></div>
+
+  <!-- Mobile Projects Panel -->
+  <div class="mobile-browse-panel" id="mobileProjectsPanel">
     <div class="mobile-browse-header">
-      <h3>Browse</h3>
-      <button class="mobile-browse-close" onclick="closeBrowsePanel()">✕</button>
+      <h3>Projects</h3>
+      <button class="mobile-browse-close" onclick="closeMobilePanel()">✕</button>
+    </div>
+    <div class="mobile-browse-content">
+      <div class="mobile-browse-section">
+        <div class="mobile-browse-section-title">
+          <span>Your Projects</span>
+          <button class="mobile-browse-add" onclick="showProjectModal(); closeMobilePanel()">+</button>
+        </div>
+        <div id="mobileProjectsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Categories Panel -->
+  <div class="mobile-browse-panel" id="mobileCategoriesPanel">
+    <div class="mobile-browse-header">
+      <h3>Categories</h3>
+      <button class="mobile-browse-close" onclick="closeMobilePanel()">✕</button>
+    </div>
+    <div class="mobile-browse-content">
+      <div class="mobile-browse-section">
+        <div class="mobile-browse-section-title">
+          <span>Your Categories</span>
+          <button class="mobile-browse-add" onclick="showCategoryModal(); closeMobilePanel()">+</button>
+        </div>
+        <div id="mobileCategoriesList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Profile Panel -->
+  <div class="mobile-browse-panel" id="mobileProfilePanel">
+    <div class="mobile-browse-header">
+      <h3>Profile</h3>
+      <button class="mobile-browse-close" onclick="closeMobilePanel()">✕</button>
     </div>
     <div class="mobile-browse-content">
       <!-- Profile Card -->
@@ -621,35 +654,25 @@
         </div>
       </div>
 
-      <!-- Views Section -->
+      <!-- Quick Actions -->
       <div class="mobile-browse-section">
         <div class="mobile-browse-section-title">Views</div>
-        <button class="mobile-browse-item" onclick="mobileNavTo('completed'); closeBrowsePanel()">
+        <button class="mobile-browse-item" onclick="mobileNavTo('today'); closeMobilePanel()">
+          <span class="mobile-browse-item-icon">📅</span>
+          <span>Today</span>
+        </button>
+        <button class="mobile-browse-item" onclick="mobileNavTo('upcoming'); closeMobilePanel()">
+          <span class="mobile-browse-item-icon">📆</span>
+          <span>Upcoming</span>
+        </button>
+        <button class="mobile-browse-item" onclick="mobileNavTo('completed'); closeMobilePanel()">
           <span class="mobile-browse-item-icon">✅</span>
           <span>Completed</span>
         </button>
-        <button class="mobile-browse-item" onclick="showStatsModal(); closeBrowsePanel()">
+        <button class="mobile-browse-item" onclick="showStatsModal(); closeMobilePanel()">
           <span class="mobile-browse-item-icon">📊</span>
           <span>Stats & Achievements</span>
         </button>
-      </div>
-
-      <!-- Projects Section -->
-      <div class="mobile-browse-section">
-        <div class="mobile-browse-section-title">
-          <span>Projects</span>
-          <button class="mobile-browse-add" onclick="showProjectModal(); closeBrowsePanel()">+</button>
-        </div>
-        <div id="mobileProjectsList"></div>
-      </div>
-
-      <!-- Categories Section -->
-      <div class="mobile-browse-section">
-        <div class="mobile-browse-section-title">
-          <span>Categories</span>
-          <button class="mobile-browse-add" onclick="showCategoryModal(); closeBrowsePanel()">+</button>
-        </div>
-        <div id="mobileCategoriesList"></div>
       </div>
 
       <!-- Auth Section -->

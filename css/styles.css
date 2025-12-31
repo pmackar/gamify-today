@@ -2706,27 +2706,6 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
 }
 
-.mobile-nav-fab {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--dreamcast-orange);
-  color: white;
-  border: none;
-  font-size: 28px;
-  font-weight: 300;
-  cursor: pointer;
-  margin: 0 8px;
-  margin-top: -20px;
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.mobile-nav-fab:active {
-  transform: scale(0.95);
-  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
-}
-
 /* Mobile Browse Panel */
 .mobile-browse-overlay {
   display: none;

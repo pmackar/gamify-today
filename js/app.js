@@ -2171,46 +2171,74 @@ function updateMobileNavActive(view) {
     }
   });
 
-  // For completed or project/category views, highlight browse
-  if (view === 'completed' || view.startsWith('project-') || view.startsWith('category-')) {
-    document.querySelector('.mobile-nav-item[data-view="browse"]')?.classList.add('active');
+  // For project views, highlight projects; for category views, highlight categories
+  if (view.startsWith('project-')) {
+    document.querySelector('.mobile-nav-item[data-view="projects"]')?.classList.add('active');
+  } else if (view.startsWith('category-')) {
+    document.querySelector('.mobile-nav-item[data-view="categories"]')?.classList.add('active');
+  } else if (view === 'today' || view === 'upcoming' || view === 'completed') {
+    document.querySelector('.mobile-nav-item[data-view="profile"]')?.classList.add('active');
   }
 }
 
-function toggleBrowsePanel() {
-  const panel = document.getElementById('mobileBrowsePanel');
-  const overlay = document.getElementById('mobileBrowseOverlay');
+let activeMobilePanel = null;
 
-  if (panel.classList.contains('active')) {
-    closeBrowsePanel();
+function toggleMobilePanel(panelType) {
+  if (activeMobilePanel === panelType) {
+    closeMobilePanel();
   } else {
-    openBrowsePanel();
+    openMobilePanel(panelType);
   }
 }
 
-function openBrowsePanel() {
-  const panel = document.getElementById('mobileBrowsePanel');
-  const overlay = document.getElementById('mobileBrowseOverlay');
+function openMobilePanel(panelType) {
+  const overlay = document.getElementById('mobilePanelOverlay');
+  const panels = {
+    projects: document.getElementById('mobileProjectsPanel'),
+    categories: document.getElementById('mobileCategoriesPanel'),
+    profile: document.getElementById('mobileProfilePanel')
+  };
 
-  // Update mobile lists
-  renderMobileProjectsList();
-  renderMobileCategoriesList();
-  updateMobileProfile();
-  updateMobileAuthUI();
+  // Close any open panel first
+  Object.values(panels).forEach(p => p?.classList.remove('active'));
 
+  // Update content based on panel type
+  if (panelType === 'projects') {
+    renderMobileProjectsList();
+  } else if (panelType === 'categories') {
+    renderMobileCategoriesList();
+  } else if (panelType === 'profile') {
+    updateMobileProfile();
+    updateMobileAuthUI();
+  }
+
+  // Open the requested panel
   overlay.classList.add('active');
-  panel.classList.add('active');
+  panels[panelType]?.classList.add('active');
+  activeMobilePanel = panelType;
+
+  // Update nav active state
+  document.querySelectorAll('.mobile-nav-item').forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.dataset.view === panelType) {
+      btn.classList.add('active');
+    }
+  });
 
   // Prevent body scroll
   document.body.style.overflow = 'hidden';
 }
 
-function closeBrowsePanel() {
-  const panel = document.getElementById('mobileBrowsePanel');
-  const overlay = document.getElementById('mobileBrowseOverlay');
+function closeMobilePanel() {
+  const overlay = document.getElementById('mobilePanelOverlay');
+  const panels = document.querySelectorAll('.mobile-browse-panel');
 
-  panel.classList.remove('active');
+  panels.forEach(p => p.classList.remove('active'));
   overlay.classList.remove('active');
+  activeMobilePanel = null;
+
+  // Restore inbox as active if no view is set
+  updateMobileNavActive(currentView);
 
   // Restore body scroll
   document.body.style.overflow = '';
@@ -2229,13 +2257,13 @@ function renderMobileProjectsList() {
     const taskCount = state.tasks.filter(t => t.project_id === project.id && !t.is_completed).length;
     return `
       <div class="mobile-browse-item-row">
-        <button class="mobile-browse-item" onclick="mobileNavTo('project-${project.id}'); closeBrowsePanel()">
+        <button class="mobile-browse-item" onclick="mobileNavTo('project-${project.id}'); closeMobilePanel()">
           <span class="mobile-browse-item-icon">📁</span>
           <span>${escapeHtml(project.name)}</span>
           <span class="mobile-browse-item-count">${taskCount}</span>
         </button>
         <div class="mobile-browse-item-actions">
-          <button class="mobile-browse-action" onclick="event.stopPropagation(); editProject('${project.id}'); closeBrowsePanel()" title="Edit">✏️</button>
+          <button class="mobile-browse-action" onclick="event.stopPropagation(); editProject('${project.id}'); closeMobilePanel()" title="Edit">✏️</button>
           <button class="mobile-browse-action mobile-browse-action-delete" onclick="event.stopPropagation(); deleteProject('${project.id}')" title="Delete">🗑️</button>
         </div>
       </div>
@@ -2255,12 +2283,12 @@ function renderMobileCategoriesList() {
   container.innerHTML = state.categories.map(cat => {
     return `
       <div class="mobile-browse-item-row">
-        <button class="mobile-browse-item" onclick="mobileNavTo('category-${cat.id}'); closeBrowsePanel()">
+        <button class="mobile-browse-item" onclick="mobileNavTo('category-${cat.id}'); closeMobilePanel()">
           <span class="mobile-category-dot" style="background: ${cat.color}"></span>
           <span>${escapeHtml(cat.name)}</span>
         </button>
         <div class="mobile-browse-item-actions">
-          <button class="mobile-browse-action" onclick="event.stopPropagation(); editCategory('${cat.id}'); closeBrowsePanel()" title="Edit">✏️</button>
+          <button class="mobile-browse-action" onclick="event.stopPropagation(); editCategory('${cat.id}'); closeMobilePanel()" title="Edit">✏️</button>
           <button class="mobile-browse-action mobile-browse-action-delete" onclick="event.stopPropagation(); deleteCategory('${cat.id}')" title="Delete">🗑️</button>
         </div>
       </div>
