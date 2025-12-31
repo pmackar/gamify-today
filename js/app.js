@@ -1,10 +1,10 @@
-// gamify.today Main Application - localStorage-first with Supabase sync
+// gamify.life Main Application - localStorage-first with Supabase sync
 
 // ============================================
 // STORAGE & STATE
 // ============================================
 
-const STORAGE_KEY = 'gamify_today';
+const STORAGE_KEY = 'gamify_life';
 const SUPABASE_URL = 'https://klsxuyiwkjrkkvwwbehc.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_0E7ZTG1PKHzMBbxiv4uKdg_uyyKDulz';
 

@@ -1,4 +1,4 @@
-// Frontend gamification utilities for gamify.today
+// Frontend gamification utilities for gamify.life
 
 const Gamification = {
   // XP Constants (mirror backend)
