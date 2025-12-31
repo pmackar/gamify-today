@@ -6,6 +6,8 @@
   <title>gamify.today - Dashboard</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+  <!-- Supabase Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <!-- SVG Definitions -->
@@ -165,9 +167,18 @@
         <span>Keyboard Shortcuts</span>
         <span class="shortcut-hint"><span class="kbd">?</span></span>
       </div>
-      <div class="nav-item nav-item-util" onclick="logout()">
-        <span class="nav-item-icon">👋</span>
-        <span>Sign Out</span>
+
+      <!-- Auth Section -->
+      <div class="auth-section">
+        <button id="login-btn" class="nav-item nav-item-util" onclick="loginWithGoogle()">
+          <span class="nav-item-icon">🔐</span>
+          <span>Login for Cloud Sync</span>
+        </button>
+        <div id="user-info" class="nav-item nav-item-util hidden" onclick="showUserMenu()">
+          <span id="sync-indicator" class="sync-icon" title="Synced">☁</span>
+          <span id="user-avatar" class="user-avatar">U</span>
+          <span style="flex: 1;">Cloud Sync Active</span>
+        </div>
       </div>
     </div>
   </aside>
@@ -566,7 +577,6 @@
     <span style="margin-left: 8px; color: var(--text-tertiary);">waiting for next key...</span>
   </div>
 
-  <script src="js/api.js"></script>
   <script src="js/gamification.js"></script>
   <script src="js/app.js"></script>
 </body>

@@ -5,319 +5,391 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>gamify.today - Level Up Your Productivity</title>
   <meta name="description" content="A gamified todo app that turns your tasks into XP. Complete tasks, earn achievements, and level up your productivity.">
-  <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
-  <!-- Google Identity Services -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Supabase Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0a0a0a;
+    }
+
+    .crt-wrapper {
+      min-height: 100vh;
+      background: #1a1a1a;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* CRT Scanlines */
+    .crt-wrapper::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* CRT Vignette */
+    .crt-wrapper::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(
+        ellipse at center,
+        transparent 0%,
+        transparent 60%,
+        rgba(0, 0, 0, 0.4) 100%
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* Screen flicker animation */
+    @keyframes flicker {
+      0% { opacity: 0.97; }
+      50% { opacity: 1; }
+      100% { opacity: 0.98; }
+    }
+
+    .intro-page {
+      min-height: 100vh;
+      color: #fff;
+      font-family: 'Press Start 2P', monospace;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      animation: flicker 0.15s infinite;
+    }
+
+    .intro-content {
+      width: 100%;
+      max-width: 800px;
+      text-align: center;
+    }
+
+    .intro-logo {
+      font-size: 3rem;
+      margin-bottom: 1.5rem;
+      filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.5));
+    }
+
+    .intro-title {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      font-weight: normal;
+      letter-spacing: -1px;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+
+    .intro-subtitle {
+      font-size: 0.6rem;
+      color: #888;
+      margin-bottom: 2.5rem;
+      line-height: 2;
+    }
+
+    .intro-tagline {
+      font-size: 0.7rem;
+      color: #FFD700;
+      margin-bottom: 2rem;
+      text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+    }
+
+    /* Feature cards */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .feature-card {
+      background: #2d2d2d;
+      border-radius: 8px;
+      padding: 1.25rem;
+      border: 2px solid #3a3a3a;
+      box-shadow:
+        0 4px 0 #1a1a1a,
+        0 0 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .feature-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-title {
+      font-size: 0.6rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+
+    .feature-desc {
+      font-size: 0.5rem;
+      color: #888;
+      line-height: 1.8;
+    }
+
+    /* Buttons */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      background: #3a3a3a;
+      border: 2px solid #4a4a4a;
+      border-radius: 8px;
+      padding: 1rem 2rem;
+      color: #fff;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.6rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.1s;
+      box-shadow: 0 4px 0 #222;
+      min-width: 280px;
+    }
+
+    .btn:hover {
+      background: #4a4a4a;
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #222;
+    }
+
+    .btn:active {
+      transform: translateY(4px);
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
+      border-color: #CC8800;
+      color: #1a1a1a;
+      box-shadow: 0 4px 0 #996600;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(180deg, #FFE44D 0%, #FFB733 100%);
+      box-shadow: 0 2px 0 #996600;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border-color: #FFD700;
+      color: #FFD700;
+    }
+
+    .btn-outline:hover {
+      background: rgba(255, 215, 0, 0.1);
+    }
+
+    .btn-icon {
+      font-size: 1rem;
+    }
+
+    /* Badge */
+    .intro-badge {
+      display: inline-block;
+      background: rgba(255, 215, 0, 0.1);
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.5rem;
+      color: #FFD700;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Footer link */
+    .intro-footer {
+      margin-top: 2.5rem;
+    }
+
+    .intro-back {
+      display: inline-block;
+      color: #666;
+      text-decoration: none;
+      font-size: 0.5rem;
+      transition: color 0.2s;
+    }
+
+    .intro-back:hover {
+      color: #FFD700;
+      text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+    }
+
+    /* Pixel corners decoration */
+    .pixel-border {
+      position: relative;
+    }
+
+    .pixel-border::before,
+    .pixel-border::after {
+      content: '';
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #FFD700;
+    }
+
+    .pixel-border::before {
+      top: -4px;
+      left: -4px;
+    }
+
+    .pixel-border::after {
+      bottom: -4px;
+      right: -4px;
+    }
+
+    @media (max-width: 768px) {
+      .intro-page {
+        padding: 1rem;
+      }
+
+      .intro-title {
+        font-size: 1rem;
+      }
+
+      .intro-logo {
+        font-size: 2rem;
+      }
+
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .btn {
+        width: 100%;
+        min-width: auto;
+      }
+    }
+  </style>
 </head>
 <body>
-  <!-- Hero Section -->
-  <section class="hero">
-    <div class="particles" id="particles"></div>
+  <div class="crt-wrapper">
+    <div class="intro-page">
+      <div class="intro-content">
+        <div class="intro-badge">Works Offline + Cloud Sync</div>
 
-    <div class="container">
-      <div class="hero-content">
-        <div class="hero-badge">NEW: Achievement System</div>
-        <h1 class="hero-title">
-          Turn Tasks Into <span>XP</span>
-        </h1>
-        <p class="hero-subtitle">
-          Complete tasks. Earn experience. Level up your productivity.
-          The gamified todo app that makes getting things done actually fun.
-        </p>
-        <div class="hero-cta">
-          <button class="btn btn-bevel btn-lg" onclick="showAuthModal('register')">
+        <div class="intro-logo">📋</div>
+
+        <h1 class="intro-title">gamify.today</h1>
+        <p class="intro-subtitle">Turn your tasks into epic quests</p>
+
+        <p class="intro-tagline">Complete tasks. Earn XP. Level up.</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <div class="feature-title">EARN XP</div>
+            <div class="feature-desc">Every task rewards experience points</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔥</div>
+            <div class="feature-title">STREAKS</div>
+            <div class="feature-desc">Build daily completion streaks</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">☁️</div>
+            <div class="feature-title">SYNC</div>
+            <div class="feature-desc">Access across all devices</div>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <a href="app.html" class="btn btn-primary">
+            <span class="btn-icon">▶</span>
             Start Playing
-          </button>
-          <button class="btn btn-outline btn-lg" onclick="showAuthModal('login')">
-            Sign In
+          </a>
+          <button class="btn btn-outline" onclick="loginWithGoogle()">
+            <span class="btn-icon">☁</span>
+            Login for Cloud Sync
           </button>
         </div>
 
-        <!-- Stats Preview -->
-        <div class="stats-grid" style="margin-top: var(--space-2xl);">
-          <div class="stat-card" style="background: rgba(255,255,255,0.05);">
-            <div class="stat-icon">⚡</div>
-            <div class="stat-value" style="color: var(--text-inverse);">XP</div>
-            <div class="stat-label">Earn XP for every task</div>
-          </div>
-          <div class="stat-card" style="background: rgba(255,255,255,0.05);">
-            <div class="stat-icon">🔥</div>
-            <div class="stat-value" style="color: var(--text-inverse);">STREAKS</div>
-            <div class="stat-label">Build daily streaks</div>
-          </div>
-          <div class="stat-card" style="background: rgba(255,255,255,0.05);">
-            <div class="stat-icon">🏆</div>
-            <div class="stat-value" style="color: var(--text-inverse);">BADGES</div>
-            <div class="stat-label">Unlock achievements</div>
-          </div>
+        <div class="intro-footer">
+          <a href="https://gamify.it.com" class="intro-back">
+            &larr; Back to gamify.it
+          </a>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Auth Modal -->
-  <div class="modal-overlay" id="authModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 class="modal-title" id="authModalTitle">Sign In</h3>
-        <button class="modal-close" onclick="closeAuthModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <!-- Login Form -->
-        <form id="loginForm" class="flex flex-col gap-md">
-          <!-- Google Sign-In Button -->
-          <div id="googleSignInButton" style="display: flex; justify-content: center;"></div>
-
-          <div class="auth-divider">
-            <span>or sign in with email</span>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input type="email" class="form-input" id="loginEmail" placeholder="you@example.com" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" required>
-          </div>
-          <div id="loginError" class="text-sm" style="color: var(--error); display: none;"></div>
-          <button type="submit" class="btn btn-primary btn-lg w-full">
-            Sign In
-          </button>
-          <p class="text-center text-sm" style="color: var(--text-secondary);">
-            Don't have an account?
-            <a href="#" onclick="showAuthModal('register'); return false;">Sign up</a>
-          </p>
-        </form>
-
-        <!-- Register Form -->
-        <form id="registerForm" class="flex flex-col gap-md" style="display: none;">
-          <!-- Google Sign-In Button -->
-          <div id="googleSignUpButton" style="display: flex; justify-content: center;"></div>
-
-          <div class="auth-divider">
-            <span>or create account with email</span>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" class="form-input" id="registerUsername" placeholder="coolgamer123" required minlength="3" maxlength="50">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input type="email" class="form-input" id="registerEmail" placeholder="you@example.com" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" class="form-input" id="registerPassword" placeholder="••••••••" required minlength="6">
-          </div>
-          <div id="registerError" class="text-sm" style="color: var(--error); display: none;"></div>
-          <button type="submit" class="btn btn-primary btn-lg w-full">
-            Create Account
-          </button>
-          <p class="text-center text-sm" style="color: var(--text-secondary);">
-            Already have an account?
-            <a href="#" onclick="showAuthModal('login'); return false;">Sign in</a>
-          </p>
-        </form>
       </div>
     </div>
   </div>
 
   <script>
-    // API Configuration
-    const API_URL = window.location.hostname === 'localhost'
-      ? 'http://localhost:3001/api'
-      : 'https://gamify-today-api-production.up.railway.app/api';
+    const SUPABASE_URL = 'https://klsxuyiwkjrkkvwwbehc.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_0E7ZTG1PKHzMBbxiv4uKdg_uyyKDulz';
 
-    // Google Client ID - configured in Google Cloud Console
-    const GOOGLE_CLIENT_ID = '425474145890-afnm8ej8403fqau5ah4lkl1r4kor9uq2.apps.googleusercontent.com';
+    let supabaseClient = null;
 
-    // Check if already logged in
-    const token = localStorage.getItem('token');
-    if (token) {
-      window.location.href = 'app.html';
+    // Initialize Supabase
+    function initSupabase() {
+      if (typeof window.supabase !== 'undefined') {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // Check if already logged in
+        supabaseClient.auth.getSession().then(({ data: { session } }) => {
+          if (session) {
+            // Already logged in, redirect to app
+            window.location.href = 'app.html';
+          }
+        });
+      }
     }
 
-    // Initialize Google Sign-In
-    function initGoogleSignIn() {
-      if (typeof google === 'undefined') {
-        // Retry after a short delay if Google script hasn't loaded
-        setTimeout(initGoogleSignIn, 100);
+    // Google OAuth login
+    async function loginWithGoogle() {
+      if (!supabaseClient) {
+        alert('Cloud sync not available. Please try again.');
         return;
       }
 
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleSignIn,
-        auto_select: false
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + '/app.html'
+        }
       });
 
-      // Render the Google Sign-In button in login form
-      google.accounts.id.renderButton(
-        document.getElementById('googleSignInButton'),
-        {
-          theme: 'outline',
-          size: 'large',
-          width: '100%',
-          text: 'continue_with'
-        }
-      );
-
-      // Render the Google Sign-In button in register form
-      google.accounts.id.renderButton(
-        document.getElementById('googleSignUpButton'),
-        {
-          theme: 'outline',
-          size: 'large',
-          width: '100%',
-          text: 'signup_with'
-        }
-      );
-    }
-
-    // Handle Google Sign-In callback
-    async function handleGoogleSignIn(response) {
-      try {
-        const result = await fetch(`${API_URL}/auth/google`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential: response.credential })
-        });
-
-        const data = await result.json();
-
-        if (!result.ok) {
-          // Show error in whichever form is visible
-          const errorDiv = document.getElementById('loginForm').style.display !== 'none'
-            ? document.getElementById('loginError')
-            : document.getElementById('registerError');
-          errorDiv.textContent = data.error || 'Google sign-in failed';
-          errorDiv.style.display = 'block';
-          return;
-        }
-
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = 'app.html';
-      } catch (error) {
-        console.error('Google sign-in error:', error);
-        const errorDiv = document.getElementById('loginError');
-        errorDiv.textContent = 'Network error. Please try again.';
-        errorDiv.style.display = 'block';
+      if (error) {
+        console.error('Login error:', error);
+        alert('Login failed. Please try again.');
       }
     }
 
-    // Initialize Google Sign-In when page loads
-    window.addEventListener('load', initGoogleSignIn);
-
-    // Create floating particles
-    function createParticles() {
-      const container = document.getElementById('particles');
-      for (let i = 0; i < 30; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        particle.style.left = Math.random() * 100 + '%';
-        particle.style.animationDelay = Math.random() * 15 + 's';
-        particle.style.animationDuration = (15 + Math.random() * 10) + 's';
-        container.appendChild(particle);
-      }
-    }
-    createParticles();
-
-    // Auth Modal
-    function showAuthModal(type) {
-      const modal = document.getElementById('authModal');
-      const title = document.getElementById('authModalTitle');
-      const loginForm = document.getElementById('loginForm');
-      const registerForm = document.getElementById('registerForm');
-
-      modal.classList.add('active');
-
-      if (type === 'login') {
-        title.textContent = 'Sign In';
-        loginForm.style.display = 'flex';
-        registerForm.style.display = 'none';
-      } else {
-        title.textContent = 'Create Account';
-        loginForm.style.display = 'none';
-        registerForm.style.display = 'flex';
-      }
-    }
-
-    function closeAuthModal() {
-      document.getElementById('authModal').classList.remove('active');
-    }
-
-    // Close modal on overlay click
-    document.getElementById('authModal').addEventListener('click', (e) => {
-      if (e.target.id === 'authModal') {
-        closeAuthModal();
-      }
-    });
-
-    // Login form submission
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('loginEmail').value;
-      const password = document.getElementById('loginPassword').value;
-      const errorDiv = document.getElementById('loginError');
-
-      try {
-        const response = await fetch(`${API_URL}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          errorDiv.textContent = data.error || 'Login failed';
-          errorDiv.style.display = 'block';
-          return;
-        }
-
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = 'app.html';
-      } catch (error) {
-        errorDiv.textContent = 'Network error. Please try again.';
-        errorDiv.style.display = 'block';
-      }
-    });
-
-    // Register form submission
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('registerUsername').value;
-      const email = document.getElementById('registerEmail').value;
-      const password = document.getElementById('registerPassword').value;
-      const errorDiv = document.getElementById('registerError');
-
-      try {
-        const response = await fetch(`${API_URL}/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          errorDiv.textContent = data.error || 'Registration failed';
-          errorDiv.style.display = 'block';
-          return;
-        }
-
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = 'app.html';
-      } catch (error) {
-        errorDiv.textContent = 'Network error. Please try again.';
-        errorDiv.style.display = 'block';
-      }
+    // Initialize on load
+    window.addEventListener('load', () => {
+      initSupabase();
     });
   </script>
 </body>

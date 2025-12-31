@@ -2557,3 +2557,53 @@ h1, h2, h3, h4, h5, h6 {
     padding: 4px 6px;
   }
 }
+
+/* ========================================
+   Cloud Sync & Auth
+   ======================================== */
+
+.auth-section {
+  margin-top: var(--space-sm);
+}
+
+.sync-icon {
+  font-size: 14px;
+  color: var(--success);
+  margin-right: var(--space-xs);
+}
+
+.sync-icon.syncing {
+  color: var(--warning);
+  animation: sync-pulse 1s infinite;
+}
+
+.sync-icon.offline {
+  color: var(--text-tertiary);
+}
+
+.sync-icon.pending {
+  color: var(--info);
+}
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--dreamcast-blue);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: var(--space-xs);
+}
+
+.hidden {
+  display: none !important;
+}

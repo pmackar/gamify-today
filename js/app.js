@@ -1,20 +1,493 @@
-// gamify.today Main Application
+// gamify.today Main Application - localStorage-first with Supabase sync
 
-// State
-let currentUser = null;
-let tasks = [];
-let projects = [];
-let categories = [];
+// ============================================
+// STORAGE & STATE
+// ============================================
+
+const STORAGE_KEY = 'gamify_today';
+const SUPABASE_URL = 'https://klsxuyiwkjrkkvwwbehc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_0E7ZTG1PKHzMBbxiv4uKdg_uyyKDulz';
+
+// Default state structure
+function getDefaultState() {
+  return {
+    profile: {
+      name: 'User',
+      level: 1,
+      xp: 0,
+      xp_to_next: 100,
+      total_tasks_completed: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      achievements: [],
+      last_task_date: null
+    },
+    tasks: [],
+    projects: [],
+    categories: [],
+    daily_stats: [],
+    personal_records: {},
+    _meta: {
+      version: 1,
+      last_sync: null,
+      schema_version: '1.0.0'
+    }
+  };
+}
+
+// App state
+let state = getDefaultState();
 let currentView = 'inbox';
 let currentTheme = 'light';
 
-// Theme Management
+// Supabase sync state
+let supabaseClient = null;
+let currentUser = null;
+let syncTimeout = null;
+let isSyncing = false;
+
+// Load state from localStorage
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      state = { ...getDefaultState(), ...parsed };
+      // Ensure all arrays exist
+      state.tasks = state.tasks || [];
+      state.projects = state.projects || [];
+      state.categories = state.categories || [];
+      state.daily_stats = state.daily_stats || [];
+      state.personal_records = state.personal_records || {};
+    }
+  } catch (e) {
+    console.error('Failed to load state:', e);
+    state = getDefaultState();
+  }
+}
+
+// Save state to localStorage and queue cloud sync
+function saveState() {
+  try {
+    state._meta.version = (state._meta.version || 0) + 1;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    queueCloudSync();
+  } catch (e) {
+    console.error('Failed to save state:', e);
+  }
+}
+
+// ============================================
+// SUPABASE CLOUD SYNC
+// ============================================
+
+function initSupabase() {
+  if (typeof window.supabase !== 'undefined') {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Listen for auth changes
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      handleAuthChange(event, session);
+    });
+
+    // Check current session
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        handleAuthChange('INITIAL', session);
+      }
+    });
+  }
+}
+
+async function handleAuthChange(event, session) {
+  if (session?.user) {
+    currentUser = session.user;
+    updateAuthUI(true);
+
+    if (event === 'SIGNED_IN' || event === 'INITIAL') {
+      await fetchAndMergeCloudData();
+
+      // Set profile name from OAuth if still default
+      const oauthName = currentUser.user_metadata?.full_name;
+      if (oauthName && state.profile.name === 'User') {
+        state.profile.name = oauthName;
+        saveState();
+      }
+      updateUserDisplay();
+      renderAll();
+    }
+  } else {
+    currentUser = null;
+    updateAuthUI(false);
+  }
+}
+
+function updateAuthUI(isLoggedIn) {
+  const loginBtn = document.getElementById('login-btn');
+  const userInfo = document.getElementById('user-info');
+  const avatar = document.getElementById('user-avatar');
+
+  if (isLoggedIn && currentUser) {
+    if (loginBtn) loginBtn.classList.add('hidden');
+    if (userInfo) userInfo.classList.remove('hidden');
+
+    // Set avatar initial
+    if (avatar) {
+      const name = currentUser.user_metadata?.full_name || currentUser.email || 'U';
+      avatar.textContent = name.charAt(0).toUpperCase();
+    }
+  } else {
+    if (loginBtn) loginBtn.classList.remove('hidden');
+    if (userInfo) userInfo.classList.add('hidden');
+  }
+}
+
+async function loginWithGoogle() {
+  if (!supabaseClient) {
+    showToast('Cloud sync not available');
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin + '/app.html'
+    }
+  });
+
+  if (error) {
+    console.error('Login error:', error);
+    showToast('Login failed', 'error');
+  }
+}
+
+async function logout() {
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  }
+  currentUser = null;
+  updateAuthUI(false);
+  showToast('Logged out - data stored locally');
+}
+
+function showUserMenu() {
+  if (confirm('Log out of cloud sync?')) {
+    logout();
+  }
+}
+
+// Cloud sync functions
+function queueCloudSync() {
+  if (!supabaseClient || !currentUser) return;
+
+  clearTimeout(syncTimeout);
+  updateSyncIndicator('pending');
+  syncTimeout = setTimeout(syncToCloud, 2000);
+}
+
+async function syncToCloud() {
+  if (!supabaseClient || !currentUser || isSyncing) return;
+
+  isSyncing = true;
+  updateSyncIndicator('syncing');
+
+  try {
+    const { error } = await supabaseClient
+      .from('gamify_today_data')
+      .upsert({
+        user_id: currentUser.id,
+        data: state,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (error) throw error;
+
+    state._meta.last_sync = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    updateSyncIndicator('synced');
+  } catch (e) {
+    console.error('Sync error:', e);
+    updateSyncIndicator('offline');
+  } finally {
+    isSyncing = false;
+  }
+}
+
+async function fetchAndMergeCloudData() {
+  if (!supabaseClient || !currentUser) return;
+
+  updateSyncIndicator('syncing');
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('gamify_today_data')
+      .select('data, updated_at')
+      .eq('user_id', currentUser.id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    if (data?.data) {
+      state = mergeData(state, data.data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      showToast('Synced from cloud', 'success');
+    } else {
+      await syncToCloud();
+    }
+
+    updateSyncIndicator('synced');
+  } catch (e) {
+    console.error('Fetch error:', e);
+    updateSyncIndicator('offline');
+  }
+}
+
+function mergeData(local, cloud) {
+  // Profile: use higher XP/level, merge achievements
+  const profile = {
+    ...getDefaultState().profile,
+    ...cloud.profile,
+    ...local.profile,
+    level: Math.max(local.profile?.level || 1, cloud.profile?.level || 1),
+    xp: Math.max(local.profile?.xp || 0, cloud.profile?.xp || 0),
+    total_tasks_completed: Math.max(
+      local.profile?.total_tasks_completed || 0,
+      cloud.profile?.total_tasks_completed || 0
+    ),
+    current_streak: Math.max(
+      local.profile?.current_streak || 0,
+      cloud.profile?.current_streak || 0
+    ),
+    longest_streak: Math.max(
+      local.profile?.longest_streak || 0,
+      cloud.profile?.longest_streak || 0
+    ),
+    achievements: [...new Set([
+      ...(local.profile?.achievements || []),
+      ...(cloud.profile?.achievements || [])
+    ])],
+    name: local.profile?.name !== 'User' ? local.profile?.name : (cloud.profile?.name || 'User')
+  };
+
+  // Recalculate xp_to_next based on level
+  profile.xp_to_next = Gamification.xpToNextLevel(profile.level);
+
+  // Tasks: combine, dedupe by ID, keep newer version
+  const tasks = mergeArrayById(local.tasks || [], cloud.tasks || [], 'updated_at');
+
+  // Projects: same approach
+  const projects = mergeArrayById(local.projects || [], cloud.projects || [], 'updated_at');
+
+  // Categories: same approach
+  const categories = mergeArrayById(local.categories || [], cloud.categories || [], 'created_at');
+
+  // Daily stats: combine by date, keep higher values
+  const dailyStatsMap = new Map();
+  [...(cloud.daily_stats || []), ...(local.daily_stats || [])].forEach(stat => {
+    const existing = dailyStatsMap.get(stat.date);
+    if (!existing) {
+      dailyStatsMap.set(stat.date, stat);
+    } else {
+      dailyStatsMap.set(stat.date, {
+        date: stat.date,
+        tasks_completed: Math.max(existing.tasks_completed || 0, stat.tasks_completed || 0),
+        xp_earned: Math.max(existing.xp_earned || 0, stat.xp_earned || 0)
+      });
+    }
+  });
+  const daily_stats = Array.from(dailyStatsMap.values())
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Personal records: keep higher values
+  const personal_records = { ...(cloud.personal_records || {}), ...(local.personal_records || {}) };
+  Object.entries(cloud.personal_records || {}).forEach(([key, value]) => {
+    if (!personal_records[key] || value.value > personal_records[key].value) {
+      personal_records[key] = value;
+    }
+  });
+
+  return {
+    profile,
+    tasks,
+    projects,
+    categories,
+    daily_stats,
+    personal_records,
+    _meta: {
+      version: Math.max(local._meta?.version || 0, cloud._meta?.version || 0) + 1,
+      last_sync: new Date().toISOString(),
+      schema_version: '1.0.0'
+    }
+  };
+}
+
+function mergeArrayById(localArr, cloudArr, timestampField) {
+  const map = new Map();
+
+  cloudArr.forEach(item => map.set(item.id, item));
+
+  localArr.forEach(item => {
+    const existing = map.get(item.id);
+    if (!existing) {
+      map.set(item.id, item);
+    } else {
+      const localTime = new Date(item[timestampField] || 0);
+      const cloudTime = new Date(existing[timestampField] || 0);
+      if (localTime > cloudTime) {
+        map.set(item.id, item);
+      }
+    }
+  });
+
+  return Array.from(map.values());
+}
+
+function updateSyncIndicator(status) {
+  const indicator = document.getElementById('sync-indicator');
+  if (!indicator) return;
+
+  indicator.classList.remove('syncing', 'offline', 'pending');
+
+  if (status === 'syncing') {
+    indicator.classList.add('syncing');
+    indicator.title = 'Syncing...';
+  } else if (status === 'offline') {
+    indicator.classList.add('offline');
+    indicator.title = 'Sync failed';
+  } else if (status === 'pending') {
+    indicator.classList.add('pending');
+    indicator.title = 'Changes pending...';
+  } else {
+    indicator.title = 'Synced';
+  }
+}
+
+// ============================================
+// GAMIFICATION
+// ============================================
+
+// Achievement definitions
+const ACHIEVEMENTS = [
+  { id: 'first-task', name: 'First Steps', description: 'Complete your first task', xp: 50, check: (s) => s.profile.total_tasks_completed >= 1 },
+  { id: 'task-10', name: 'Getting Started', description: 'Complete 10 tasks', xp: 100, check: (s) => s.profile.total_tasks_completed >= 10 },
+  { id: 'task-50', name: 'Productive', description: 'Complete 50 tasks', xp: 250, check: (s) => s.profile.total_tasks_completed >= 50 },
+  { id: 'task-100', name: 'Century', description: 'Complete 100 tasks', xp: 500, check: (s) => s.profile.total_tasks_completed >= 100 },
+  { id: 'task-500', name: 'Task Master', description: 'Complete 500 tasks', xp: 1000, check: (s) => s.profile.total_tasks_completed >= 500 },
+  { id: 'streak-3', name: 'On a Roll', description: 'Reach a 3-day streak', xp: 75, check: (s) => s.profile.longest_streak >= 3 },
+  { id: 'streak-7', name: 'Week Warrior', description: 'Reach a 7-day streak', xp: 150, check: (s) => s.profile.longest_streak >= 7 },
+  { id: 'streak-14', name: 'Two Week Champion', description: 'Reach a 14-day streak', xp: 300, check: (s) => s.profile.longest_streak >= 14 },
+  { id: 'streak-30', name: 'Monthly Master', description: 'Reach a 30-day streak', xp: 750, check: (s) => s.profile.longest_streak >= 30 },
+  { id: 'level-5', name: 'Apprentice', description: 'Reach level 5', xp: 100, check: (s) => s.profile.level >= 5 },
+  { id: 'level-10', name: 'Journeyman', description: 'Reach level 10', xp: 200, check: (s) => s.profile.level >= 10 },
+  { id: 'level-25', name: 'Expert', description: 'Reach level 25', xp: 500, check: (s) => s.profile.level >= 25 },
+  { id: 'level-50', name: 'Legend', description: 'Reach level 50', xp: 1000, check: (s) => s.profile.level >= 50 },
+  { id: 'epic-task', name: 'Epic Victory', description: 'Complete an Epic difficulty task', xp: 100, check: (s) => s.tasks.some(t => t.is_completed && t.difficulty === 'epic') },
+  { id: 'major-task', name: 'Major Achievement', description: 'Complete a Major tier task', xp: 100, check: (s) => s.tasks.some(t => t.is_completed && t.tier === 'tier1') }
+];
+
+function calculateTaskXP(task) {
+  let xp = Gamification.BASE_XP;
+  xp *= Gamification.TIER_MULTIPLIER[task.tier] || Gamification.TIER_MULTIPLIER.tier3;
+  xp *= Gamification.DIFFICULTY_MULTIPLIER[task.difficulty] || Gamification.DIFFICULTY_MULTIPLIER.medium;
+
+  // On-time bonus
+  if (task.due_date) {
+    const wasOnTime = new Date() <= new Date(task.due_date);
+    if (wasOnTime) {
+      xp *= Gamification.ON_TIME_BONUS;
+      task.was_on_time = true;
+    }
+  }
+
+  // Streak bonus
+  const streakMultiplier = Math.min(
+    1 + (state.profile.current_streak * Gamification.STREAK_BONUS_PER_DAY),
+    Gamification.MAX_STREAK_MULTIPLIER
+  );
+  xp *= streakMultiplier;
+
+  return Math.floor(xp);
+}
+
+function updateStreak() {
+  const today = new Date().toISOString().split('T')[0];
+  const lastDate = state.profile.last_task_date;
+
+  if (!lastDate) {
+    state.profile.current_streak = 1;
+  } else {
+    const last = new Date(lastDate);
+    const now = new Date(today);
+    const diffDays = Math.floor((now - last) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      // Same day, no change
+    } else if (diffDays === 1) {
+      state.profile.current_streak++;
+    } else {
+      state.profile.current_streak = 1;
+    }
+  }
+
+  state.profile.last_task_date = today;
+  state.profile.longest_streak = Math.max(state.profile.longest_streak, state.profile.current_streak);
+}
+
+function updateDailyStats(xpEarned) {
+  const today = new Date().toISOString().split('T')[0];
+  let todayStat = state.daily_stats.find(s => s.date === today);
+
+  if (!todayStat) {
+    todayStat = { date: today, tasks_completed: 0, xp_earned: 0 };
+    state.daily_stats.unshift(todayStat);
+  }
+
+  todayStat.tasks_completed++;
+  todayStat.xp_earned += xpEarned;
+}
+
+function addXP(amount) {
+  state.profile.xp += amount;
+
+  // Check for level up
+  let leveledUp = false;
+  while (state.profile.xp >= state.profile.xp_to_next) {
+    state.profile.xp -= state.profile.xp_to_next;
+    state.profile.level++;
+    state.profile.xp_to_next = Gamification.xpToNextLevel(state.profile.level);
+    leveledUp = true;
+  }
+
+  return leveledUp;
+}
+
+function checkAchievements() {
+  const newAchievements = [];
+
+  ACHIEVEMENTS.forEach(achievement => {
+    if (!state.profile.achievements.includes(achievement.id) && achievement.check(state)) {
+      state.profile.achievements.push(achievement.id);
+      addXP(achievement.xp);
+      newAchievements.push(achievement);
+    }
+  });
+
+  return newAchievements;
+}
+
+// ============================================
+// THEME MANAGEMENT
+// ============================================
+
 function setTheme(theme) {
   currentTheme = theme;
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('gamify-theme', theme);
 
-  // Update pill states
   document.querySelectorAll('.theme-pill').forEach(pill => {
     pill.classList.toggle('active', pill.dataset.theme === theme);
   });
@@ -25,43 +498,10 @@ function loadSavedTheme() {
   setTheme(savedTheme);
 }
 
-// Initialize app
-document.addEventListener('DOMContentLoaded', async () => {
-  // Load saved theme immediately
-  loadSavedTheme();
+// ============================================
+// USER DISPLAY
+// ============================================
 
-  // Check authentication
-  const token = localStorage.getItem('token');
-  if (!token) {
-    window.location.href = 'index.html';
-    return;
-  }
-
-  try {
-    const userData = JSON.parse(localStorage.getItem('user'));
-    if (userData) {
-      currentUser = userData;
-      updateUserDisplay();
-    }
-
-    // Load data
-    await Promise.all([
-      loadTasks(),
-      loadProjects(),
-      loadCategories(),
-      refreshUserData()
-    ]);
-
-    // Set up XP preview calculation
-    setupXPPreview();
-
-  } catch (error) {
-    console.error('Init error:', error);
-    showToast('Failed to load data', 'error');
-  }
-});
-
-// Character ranks based on level
 const characterRanks = [
   { minLevel: 1, rank: 'Novice', icon: '🎮' },
   { minLevel: 5, rank: 'Apprentice', icon: '⚔️' },
@@ -84,38 +524,37 @@ function getRankForLevel(level) {
   return result;
 }
 
-// User Display
 function updateUserDisplay() {
-  if (!currentUser) return;
-
-  const level = currentUser.level || 1;
-  const xp = currentUser.xp || 0;
-  const xpToNext = currentUser.xpToNext || 100;
-  const streak = currentUser.currentStreak || 0;
+  const profile = state.profile;
+  const level = profile.level || 1;
+  const xp = profile.xp || 0;
+  const xpToNext = profile.xp_to_next || 100;
+  const streak = profile.current_streak || 0;
 
   // Update level badge
-  document.getElementById('userLevel').textContent = level;
+  const userLevel = document.getElementById('userLevel');
+  if (userLevel) userLevel.textContent = level;
 
   // Update XP display
-  document.getElementById('xpCurrent').textContent = xp;
-  document.getElementById('xpToNext').textContent = xpToNext;
+  const xpCurrent = document.getElementById('xpCurrent');
+  const xpToNextEl = document.getElementById('xpToNext');
+  if (xpCurrent) xpCurrent.textContent = xp;
+  if (xpToNextEl) xpToNextEl.textContent = xpToNext;
 
   // Update XP bar
   const xpPercent = Math.min((xp / xpToNext) * 100, 100);
   const xpBarFill = document.getElementById('xpBarFill');
-  if (xpBarFill) {
-    xpBarFill.style.width = `${xpPercent}%`;
-  }
+  if (xpBarFill) xpBarFill.style.width = `${xpPercent}%`;
 
-  // Update level ring progress (SVG circle)
+  // Update level ring
   const levelRing = document.getElementById('levelRingProgress');
   if (levelRing) {
-    const circumference = 2 * Math.PI * 45; // r=45
+    const circumference = 2 * Math.PI * 45;
     const offset = circumference - (xpPercent / 100) * circumference;
     levelRing.style.strokeDashoffset = offset;
   }
 
-  // Update character rank and icon
+  // Update rank
   const rankInfo = getRankForLevel(level);
   const rankEl = document.getElementById('characterRank');
   const avatarIcon = document.getElementById('avatarIcon');
@@ -123,30 +562,20 @@ function updateUserDisplay() {
   if (avatarIcon) avatarIcon.textContent = rankInfo.icon;
 
   // Update streak
-  document.getElementById('streakCount').textContent = streak;
+  const streakCount = document.getElementById('streakCount');
+  if (streakCount) streakCount.textContent = streak;
 
   // Update tasks completed today
   updateTasksCompletedToday();
 }
 
-// Update tasks completed today count
-async function updateTasksCompletedToday() {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const data = await api.getTasks({ is_completed: 'true' });
-    const todayTasks = data.tasks.filter(t => {
-      const completedDate = new Date(t.completed_at || t.updated_at);
-      return completedDate >= today;
-    });
-    const countEl = document.getElementById('tasksCompletedToday');
-    if (countEl) countEl.textContent = todayTasks.length;
-  } catch (error) {
-    console.error('Failed to get tasks completed today:', error);
-  }
+function updateTasksCompletedToday() {
+  const today = new Date().toISOString().split('T')[0];
+  const todayStat = state.daily_stats.find(s => s.date === today);
+  const countEl = document.getElementById('tasksCompletedToday');
+  if (countEl) countEl.textContent = todayStat?.tasks_completed || 0;
 }
 
-// Trigger level up animation
 function triggerLevelUpAnimation() {
   const avatar = document.getElementById('characterAvatar');
   if (avatar) {
@@ -155,227 +584,280 @@ function triggerLevelUpAnimation() {
   }
 }
 
-async function refreshUserData() {
-  try {
-    const data = await api.getMe();
-    currentUser = data.user;
-    localStorage.setItem('user', JSON.stringify(currentUser));
-    updateUserDisplay();
-  } catch (error) {
-    console.error('Failed to refresh user data:', error);
+// ============================================
+// TASKS CRUD (LOCAL)
+// ============================================
+
+function getFilteredTasks() {
+  let filtered = [...state.tasks];
+
+  if (currentView === 'today') {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    filtered = filtered.filter(t => !t.is_completed && t.due_date && new Date(t.due_date) <= today);
+  } else if (currentView === 'upcoming') {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    filtered = filtered.filter(t => !t.is_completed && t.due_date && new Date(t.due_date) >= tomorrow);
+  } else if (currentView === 'completed') {
+    filtered = filtered.filter(t => t.is_completed);
+  } else if (currentView.startsWith('project-')) {
+    const projectId = currentView.replace('project-', '');
+    filtered = filtered.filter(t => t.project_id === projectId && !t.is_completed);
+  } else if (currentView.startsWith('category-')) {
+    const categoryId = currentView.replace('category-', '');
+    filtered = filtered.filter(t => t.category_id === categoryId && !t.is_completed);
+  } else {
+    // Inbox: all incomplete tasks
+    filtered = filtered.filter(t => !t.is_completed);
   }
-}
 
-// Tasks
-async function loadTasks() {
-  try {
-    const filters = {};
+  // Sort by order_index, then by created_at
+  filtered.sort((a, b) => (a.order_index || 0) - (b.order_index || 0) || new Date(b.created_at) - new Date(a.created_at));
 
-    if (currentView === 'today') {
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
-      filters.due_before = today.toISOString();
-      filters.is_completed = 'false';
-    } else if (currentView === 'upcoming') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0);
-      filters.due_after = tomorrow.toISOString();
-      filters.is_completed = 'false';
-    } else if (currentView === 'completed') {
-      filters.is_completed = 'true';
-    } else if (currentView.startsWith('project-')) {
-      filters.project_id = currentView.replace('project-', '');
-    } else if (currentView.startsWith('category-')) {
-      filters.category_id = currentView.replace('category-', '');
-    }
-
-    const data = await api.getTasks(filters);
-    tasks = data.tasks;
-    renderTasks();
-    updateTaskCounts();
-  } catch (error) {
-    console.error('Failed to load tasks:', error);
-    showToast('Failed to load tasks', 'error');
-  }
+  return filtered;
 }
 
 function renderTasks() {
+  const tasks = getFilteredTasks();
   const container = document.getElementById('taskList');
   const emptyState = document.getElementById('emptyState');
 
   if (tasks.length === 0) {
-    container.innerHTML = '';
-    emptyState.classList.remove('hidden');
+    if (container) container.innerHTML = '';
+    if (emptyState) emptyState.classList.remove('hidden');
     return;
   }
 
-  emptyState.classList.add('hidden');
+  if (emptyState) emptyState.classList.add('hidden');
 
-  container.innerHTML = tasks.map(task => {
-    const priorityClass = task.priority ? `priority-${task.priority.toLowerCase()}` : '';
-    const completedClass = task.is_completed ? 'completed' : '';
-    const dueInfo = Gamification.formatDueDate(task.due_date);
-    const tierInfo = Gamification.getTierInfo(task.tier);
+  if (container) {
+    container.innerHTML = tasks.map(task => {
+      const priorityClass = task.priority ? `priority-${task.priority.toLowerCase()}` : '';
+      const completedClass = task.is_completed ? 'completed' : '';
+      const dueInfo = Gamification.formatDueDate(task.due_date);
+      const tierInfo = Gamification.getTierInfo(task.tier);
+      const project = state.projects.find(p => p.id === task.project_id);
+      const xpPreview = Gamification.calculateXPPreview(task, state.profile.current_streak);
 
-    return `
-      <div class="task-card ${priorityClass} ${completedClass}" data-id="${task.id}">
-        <div class="task-checkbox ${task.is_completed ? 'checked' : ''}"
-             onclick="toggleTaskComplete('${task.id}', ${!task.is_completed})"></div>
-        <div class="task-content" onclick="editTask('${task.id}')">
-          <div class="task-title">${escapeHtml(task.title)}</div>
-          <div class="task-meta">
-            ${task.project_name ? `<span>📁 ${escapeHtml(task.project_name)}</span>` : ''}
-            ${dueInfo ? `<span class="task-due ${dueInfo.class}">📅 ${dueInfo.text}</span>` : ''}
-            <span class="tier-badge ${task.tier}">${tierInfo.name}</span>
-            ${!task.is_completed ? `<span class="task-xp">${Gamification.formatXP(task.xp_preview || task.xp_earned)}</span>` : ''}
-            ${task.is_completed && task.xp_earned ? `<span class="task-xp">Earned ${task.xp_earned} XP</span>` : ''}
+      return `
+        <div class="task-card ${priorityClass} ${completedClass}" data-id="${task.id}">
+          <div class="task-checkbox ${task.is_completed ? 'checked' : ''}"
+               onclick="toggleTaskComplete('${task.id}', ${!task.is_completed})"></div>
+          <div class="task-content" onclick="editTask('${task.id}')">
+            <div class="task-title">${escapeHtml(task.title)}</div>
+            <div class="task-meta">
+              ${project ? `<span>📁 ${escapeHtml(project.name)}</span>` : ''}
+              ${dueInfo ? `<span class="task-due ${dueInfo.class}">📅 ${dueInfo.text}</span>` : ''}
+              <span class="tier-badge ${task.tier}">${tierInfo.name}</span>
+              ${!task.is_completed ? `<span class="task-xp">${Gamification.formatXP(xpPreview)}</span>` : ''}
+              ${task.is_completed && task.xp_earned ? `<span class="task-xp">Earned ${task.xp_earned} XP</span>` : ''}
+            </div>
           </div>
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteTask('${task.id}')" title="Delete">
+            🗑️
+          </button>
         </div>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteTask('${task.id}')" title="Delete">
-          🗑️
-        </button>
+      `;
+    }).join('');
+  }
+}
+
+function createTask(taskData) {
+  const task = {
+    id: Date.now().toString(),
+    title: taskData.title || '',
+    description: taskData.description || '',
+    status: 'Not started',
+    priority: taskData.priority || null,
+    tier: taskData.tier || 'tier3',
+    difficulty: taskData.difficulty || 'medium',
+    due_date: taskData.due_date || null,
+    is_completed: false,
+    completed_at: null,
+    xp_earned: 0,
+    was_on_time: null,
+    project_id: taskData.project_id || null,
+    category_id: taskData.category_id || null,
+    tags: taskData.tags || [],
+    order_index: state.tasks.length,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  state.tasks.push(task);
+  saveState();
+  renderTasks();
+  updateTaskCounts();
+
+  return task;
+}
+
+function updateTask(taskId, updates) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task) {
+    Object.assign(task, updates, { updated_at: new Date().toISOString() });
+    saveState();
+    renderTasks();
+  }
+}
+
+function deleteTask(taskId) {
+  if (!confirm('Delete this task?')) return;
+
+  state.tasks = state.tasks.filter(t => t.id !== taskId);
+  saveState();
+  renderTasks();
+  updateTaskCounts();
+  showToast('Task deleted', 'success');
+}
+
+function toggleTaskComplete(taskId, complete) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  if (complete) {
+    // Calculate XP
+    const xpEarned = calculateTaskXP(task);
+    task.xp_earned = xpEarned;
+    task.is_completed = true;
+    task.completed_at = new Date().toISOString();
+    task.updated_at = new Date().toISOString();
+
+    // Update stats
+    state.profile.total_tasks_completed++;
+    updateStreak();
+    updateDailyStats(xpEarned);
+
+    // Add XP and check level up
+    const leveledUp = addXP(xpEarned);
+
+    // Check achievements
+    const newAchievements = checkAchievements();
+
+    saveState();
+    renderTasks();
+    updateUserDisplay();
+    updateTaskCounts();
+
+    // Show feedback
+    showToast(`+${xpEarned} XP earned!`, 'success');
+
+    if (leveledUp) {
+      Gamification.createConfetti();
+      triggerLevelUpAnimation();
+      showToast(`Level Up! You're now level ${state.profile.level}!`, 'success');
+    }
+
+    newAchievements.forEach(achievement => {
+      setTimeout(() => showAchievementToast(achievement), 500);
+    });
+
+  } else {
+    // Uncomplete task - revoke XP
+    const revokedXP = task.xp_earned || 0;
+
+    if (revokedXP > 0) {
+      state.profile.xp -= revokedXP;
+
+      // Handle level down
+      while (state.profile.xp < 0 && state.profile.level > 1) {
+        state.profile.level--;
+        state.profile.xp_to_next = Gamification.xpToNextLevel(state.profile.level);
+        state.profile.xp += state.profile.xp_to_next;
+      }
+      state.profile.xp = Math.max(0, state.profile.xp);
+
+      state.profile.total_tasks_completed = Math.max(0, state.profile.total_tasks_completed - 1);
+      showToast(`-${revokedXP} XP revoked`, 'error');
+    }
+
+    task.is_completed = false;
+    task.completed_at = null;
+    task.xp_earned = 0;
+    task.updated_at = new Date().toISOString();
+
+    saveState();
+    renderTasks();
+    updateUserDisplay();
+    updateTaskCounts();
+  }
+}
+
+function updateTaskCounts() {
+  const incompleteTasks = state.tasks.filter(t => !t.is_completed);
+  const inboxCount = document.getElementById('inboxCount');
+  if (inboxCount) inboxCount.textContent = incompleteTasks.length;
+
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const todayTasks = incompleteTasks.filter(t => t.due_date && new Date(t.due_date) <= today);
+  const todayCount = document.getElementById('todayCount');
+  if (todayCount) todayCount.textContent = todayTasks.length;
+}
+
+// ============================================
+// PROJECTS CRUD (LOCAL)
+// ============================================
+
+function renderProjectsList() {
+  const container = document.getElementById('projectsList');
+  if (!container) return;
+
+  container.innerHTML = state.projects.map(project => {
+    const taskCount = state.tasks.filter(t => t.project_id === project.id && !t.is_completed).length;
+    return `
+      <div class="nav-item ${currentView === 'project-' + project.id ? 'active' : ''}"
+           data-view="project-${project.id}"
+           onclick="setActiveView('project-${project.id}')">
+        <span class="nav-item-icon">📁</span>
+        <span class="truncate">${escapeHtml(project.name)}</span>
+        <span class="nav-item-count">${taskCount}</span>
       </div>
     `;
   }).join('');
 }
 
-async function toggleTaskComplete(taskId, complete) {
-  try {
-    if (complete) {
-      const result = await api.completeTask(taskId);
-
-      // Show XP toast
-      const gam = result.gamification;
-      showToast(`+${gam.earnedXP} XP earned!`, 'success');
-
-      // Check for new achievements
-      if (gam.newAchievements && gam.newAchievements.length > 0) {
-        gam.newAchievements.forEach(achievement => {
-          setTimeout(() => {
-            showAchievementToast(achievement);
-          }, 500);
-        });
-      }
-
-      // Check for level up
-      if (gam.level > currentUser.level) {
-        Gamification.createConfetti();
-        triggerLevelUpAnimation();
-        showToast(`Level Up! You're now level ${gam.level}!`, 'success');
-      }
-
-      // Update user data
-      currentUser.level = gam.level;
-      currentUser.xp = gam.totalXP;
-      currentUser.xpToNext = gam.xpToNext;
-      currentUser.currentStreak = gam.streak;
-      currentUser.longestStreak = gam.longestStreak;
-      currentUser.totalTasksCompleted++;
-      localStorage.setItem('user', JSON.stringify(currentUser));
-      updateUserDisplay();
-    } else {
-      const result = await api.uncompleteTask(taskId);
-
-      // Show XP revoked toast
-      if (result.gamification && result.gamification.revokedXP > 0) {
-        showToast(`-${result.gamification.revokedXP} XP revoked`, 'error');
-
-        // Update user data
-        currentUser.level = result.gamification.level;
-        currentUser.xp = result.gamification.totalXP;
-        currentUser.xpToNext = result.gamification.xpToNext;
-        currentUser.totalTasksCompleted = Math.max(0, currentUser.totalTasksCompleted - 1);
-        localStorage.setItem('user', JSON.stringify(currentUser));
-        updateUserDisplay();
-
-        // Show level down warning if level changed
-        if (result.gamification.levelChanged) {
-          showToast(`Level decreased to ${result.gamification.level}`, 'error');
-        }
-      }
-    }
-
-    await loadTasks();
-  } catch (error) {
-    console.error('Failed to update task:', error);
-    showToast('Failed to update task', 'error');
-  }
-}
-
-async function deleteTask(taskId) {
-  if (!confirm('Delete this task?')) return;
-
-  try {
-    await api.deleteTask(taskId);
-    await loadTasks();
-    showToast('Task deleted', 'success');
-  } catch (error) {
-    console.error('Failed to delete task:', error);
-    showToast('Failed to delete task', 'error');
-  }
-}
-
-function updateTaskCounts() {
-  // Count incomplete tasks for inbox
-  api.getTasks({ is_completed: 'false' }).then(data => {
-    document.getElementById('inboxCount').textContent = data.tasks.length;
-  });
-
-  // Count today's tasks
-  const today = new Date();
-  today.setHours(23, 59, 59, 999);
-  api.getTasks({ due_before: today.toISOString(), is_completed: 'false' }).then(data => {
-    document.getElementById('todayCount').textContent = data.tasks.length;
-  });
-}
-
-// Projects
-async function loadProjects() {
-  try {
-    const data = await api.getProjects();
-    projects = data.projects;
-    renderProjectsList();
-    updateProjectSelect();
-  } catch (error) {
-    console.error('Failed to load projects:', error);
-  }
-}
-
-function renderProjectsList() {
-  const container = document.getElementById('projectsList');
-  container.innerHTML = projects.map(project => `
-    <div class="nav-item ${currentView === 'project-' + project.id ? 'active' : ''}"
-         data-view="project-${project.id}"
-         onclick="setActiveView('project-${project.id}')">
-      <span class="nav-item-icon">📁</span>
-      <span class="truncate">${escapeHtml(project.name)}</span>
-      <span class="nav-item-count">${project.task_count || 0}</span>
-    </div>
-  `).join('');
-}
-
 function updateProjectSelect() {
   const select = document.getElementById('taskProject');
+  if (!select) return;
+
   select.innerHTML = '<option value="">None</option>' +
-    projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    state.projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
 }
 
-// Categories
-async function loadCategories() {
-  try {
-    const data = await api.getCategories();
-    categories = data.categories;
-    renderCategoriesList();
-    updateCategorySelect();
-  } catch (error) {
-    console.error('Failed to load categories:', error);
-  }
+function createProject(projectData) {
+  const project = {
+    id: Date.now().toString(),
+    name: projectData.name || '',
+    description: projectData.description || '',
+    status: 'Not started',
+    start_date: projectData.start_date || null,
+    due_date: projectData.due_date || null,
+    tier: 'tier2',
+    xp_earned: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  state.projects.push(project);
+  saveState();
+  renderProjectsList();
+  updateProjectSelect();
+
+  return project;
 }
+
+// ============================================
+// CATEGORIES CRUD (LOCAL)
+// ============================================
 
 function renderCategoriesList() {
   const container = document.getElementById('categoriesList');
-  container.innerHTML = categories.map(cat => `
+  if (!container) return;
+
+  container.innerHTML = state.categories.map(cat => `
     <div class="nav-item ${currentView === 'category-' + cat.id ? 'active' : ''}"
          data-view="category-${cat.id}"
          onclick="setActiveView('category-${cat.id}')">
@@ -387,15 +869,36 @@ function renderCategoriesList() {
 
 function updateCategorySelect() {
   const select = document.getElementById('taskCategory');
+  if (!select) return;
+
   select.innerHTML = '<option value="">None</option>' +
-    categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    state.categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 
-// View Management
+function createCategory(categoryData) {
+  const category = {
+    id: Date.now().toString(),
+    name: categoryData.name || '',
+    color: categoryData.color || '#6b7280',
+    order_index: state.categories.length,
+    created_at: new Date().toISOString()
+  };
+
+  state.categories.push(category);
+  saveState();
+  renderCategoriesList();
+  updateCategorySelect();
+
+  return category;
+}
+
+// ============================================
+// VIEW MANAGEMENT
+// ============================================
+
 function setActiveView(view) {
   currentView = view;
 
-  // Update nav items
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
     if (item.dataset.view === view) {
@@ -403,7 +906,6 @@ function setActiveView(view) {
     }
   });
 
-  // Update title
   const titles = {
     inbox: { title: 'Inbox', subtitle: 'All your tasks' },
     today: { title: 'Today', subtitle: 'Tasks due today' },
@@ -415,23 +917,26 @@ function setActiveView(view) {
     document.getElementById('viewTitle').textContent = titles[view].title;
     document.getElementById('viewSubtitle').textContent = titles[view].subtitle;
   } else if (view.startsWith('project-')) {
-    const project = projects.find(p => p.id === view.replace('project-', ''));
+    const project = state.projects.find(p => p.id === view.replace('project-', ''));
     if (project) {
       document.getElementById('viewTitle').textContent = project.name;
       document.getElementById('viewSubtitle').textContent = 'Project tasks';
     }
   } else if (view.startsWith('category-')) {
-    const category = categories.find(c => c.id === view.replace('category-', ''));
+    const category = state.categories.find(c => c.id === view.replace('category-', ''));
     if (category) {
       document.getElementById('viewTitle').textContent = category.name;
       document.getElementById('viewSubtitle').textContent = 'Category tasks';
     }
   }
 
-  loadTasks();
+  renderTasks();
 }
 
-// Modals
+// ============================================
+// MODALS
+// ============================================
+
 function showTaskModal(taskData = null) {
   document.getElementById('taskModal').classList.add('active');
   document.getElementById('taskModalTitle').textContent = taskData ? 'Edit Task' : 'Add Task';
@@ -458,7 +963,7 @@ function closeTaskModal() {
   document.getElementById('taskModal').classList.remove('active');
 }
 
-async function saveTask() {
+function saveTask() {
   const id = document.getElementById('taskId').value;
   const data = {
     title: document.getElementById('taskTitle').value,
@@ -471,24 +976,24 @@ async function saveTask() {
     category_id: document.getElementById('taskCategory').value || null
   };
 
-  try {
-    if (id) {
-      await api.updateTask(id, data);
-      showToast('Task updated', 'success');
-    } else {
-      await api.createTask(data);
-      showToast('Task created', 'success');
-    }
-    closeTaskModal();
-    await loadTasks();
-  } catch (error) {
-    console.error('Failed to save task:', error);
-    showToast(error.message || 'Failed to save task', 'error');
+  if (!data.title) {
+    showToast('Please enter a task title', 'error');
+    return;
   }
+
+  if (id) {
+    updateTask(id, data);
+    showToast('Task updated', 'success');
+  } else {
+    createTask(data);
+    showToast('Task created', 'success');
+  }
+
+  closeTaskModal();
 }
 
-async function editTask(taskId) {
-  const task = tasks.find(t => t.id === taskId);
+function editTask(taskId) {
+  const task = state.tasks.find(t => t.id === taskId);
   if (task) {
     showTaskModal(task);
   }
@@ -504,7 +1009,7 @@ function closeProjectModal() {
   document.getElementById('projectModal').classList.remove('active');
 }
 
-async function saveProject() {
+function saveProject() {
   const id = document.getElementById('projectId').value;
   const data = {
     name: document.getElementById('projectName').value,
@@ -513,20 +1018,25 @@ async function saveProject() {
     due_date: document.getElementById('projectDueDate').value || null
   };
 
-  try {
-    if (id) {
-      await api.updateProject(id, data);
-      showToast('Project updated', 'success');
-    } else {
-      await api.createProject(data);
-      showToast('Project created', 'success');
-    }
-    closeProjectModal();
-    await loadProjects();
-  } catch (error) {
-    console.error('Failed to save project:', error);
-    showToast(error.message || 'Failed to save project', 'error');
+  if (!data.name) {
+    showToast('Please enter a project name', 'error');
+    return;
   }
+
+  if (id) {
+    const project = state.projects.find(p => p.id === id);
+    if (project) {
+      Object.assign(project, data, { updated_at: new Date().toISOString() });
+      saveState();
+    }
+    showToast('Project updated', 'success');
+  } else {
+    createProject(data);
+    showToast('Project created', 'success');
+  }
+
+  closeProjectModal();
+  renderProjectsList();
 }
 
 function showCategoryModal() {
@@ -539,62 +1049,72 @@ function closeCategoryModal() {
   document.getElementById('categoryModal').classList.remove('active');
 }
 
-async function saveCategory() {
+function saveCategory() {
   const id = document.getElementById('categoryId').value;
   const data = {
     name: document.getElementById('categoryName').value,
     color: document.getElementById('categoryColor').value
   };
 
-  try {
-    if (id) {
-      await api.updateCategory(id, data);
-      showToast('Category updated', 'success');
-    } else {
-      await api.createCategory(data);
-      showToast('Category created', 'success');
-    }
-    closeCategoryModal();
-    await loadCategories();
-  } catch (error) {
-    console.error('Failed to save category:', error);
-    showToast(error.message || 'Failed to save category', 'error');
+  if (!data.name) {
+    showToast('Please enter a category name', 'error');
+    return;
   }
+
+  if (id) {
+    const category = state.categories.find(c => c.id === id);
+    if (category) {
+      Object.assign(category, data);
+      saveState();
+    }
+    showToast('Category updated', 'success');
+  } else {
+    createCategory(data);
+    showToast('Category created', 'success');
+  }
+
+  closeCategoryModal();
+  renderCategoriesList();
 }
 
-async function showStatsModal() {
+function showStatsModal() {
   document.getElementById('statsModal').classList.add('active');
 
-  try {
-    const [statsData, achievementsData] = await Promise.all([
-      api.getStatsSummary(),
-      api.getAchievements()
-    ]);
+  // Update stats
+  document.getElementById('statTotalTasks').textContent = state.profile.total_tasks_completed;
+  document.getElementById('statLongestStreak').textContent = state.profile.longest_streak;
 
-    // Update stats
-    document.getElementById('statTotalTasks').textContent = statsData.user.totalTasksCompleted;
-    document.getElementById('statLongestStreak').textContent = statsData.user.longestStreak;
-    document.getElementById('statOnTime').textContent = statsData.tasks.onTime;
-    document.getElementById('statWeekXP').textContent = statsData.thisWeek.xpEarned;
+  // On-time completions
+  const onTimeTasks = state.tasks.filter(t => t.is_completed && t.was_on_time).length;
+  document.getElementById('statOnTime').textContent = onTimeTasks;
 
-    // Update achievements
-    document.getElementById('achievementProgress').textContent = achievementsData.progress;
+  // Week XP
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekXP = state.daily_stats
+    .filter(s => new Date(s.date) >= weekAgo)
+    .reduce((sum, s) => sum + (s.xp_earned || 0), 0);
+  document.getElementById('statWeekXP').textContent = weekXP;
 
-    const container = document.getElementById('achievementsList');
-    container.innerHTML = achievementsData.achievements.map(a => `
-      <div class="achievement-badge ${a.unlocked ? 'unlocked' : 'locked'}">
-        <div class="achievement-icon">${a.unlocked ? '🏆' : '🔒'}</div>
+  // Achievements
+  const unlockedCount = state.profile.achievements.length;
+  const totalCount = ACHIEVEMENTS.length;
+  document.getElementById('achievementProgress').textContent = `${unlockedCount}/${totalCount}`;
+
+  const container = document.getElementById('achievementsList');
+  container.innerHTML = ACHIEVEMENTS.map(a => {
+    const unlocked = state.profile.achievements.includes(a.id);
+    return `
+      <div class="achievement-badge ${unlocked ? 'unlocked' : 'locked'}">
+        <div class="achievement-icon">${unlocked ? '🏆' : '🔒'}</div>
         <div class="achievement-info">
           <div class="achievement-name">${a.name}</div>
           <div class="achievement-desc">${a.description}</div>
         </div>
         <div class="achievement-xp">+${a.xp} XP</div>
       </div>
-    `).join('');
-  } catch (error) {
-    console.error('Failed to load stats:', error);
-    showToast('Failed to load stats', 'error');
-  }
+    `;
+  }).join('');
 }
 
 function closeStatsModal() {
@@ -605,7 +1125,8 @@ function closeStatsModal() {
 function setupXPPreview() {
   const inputs = ['taskTier', 'taskDifficulty', 'taskDueDate'];
   inputs.forEach(id => {
-    document.getElementById(id).addEventListener('change', updateXPPreview);
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', updateXPPreview);
   });
 }
 
@@ -616,11 +1137,15 @@ function updateXPPreview() {
     due_date: document.getElementById('taskDueDate').value
   };
 
-  const xp = Gamification.calculateXPPreview(task, currentUser?.currentStreak || 0);
-  document.getElementById('xpPreview').textContent = Gamification.formatXP(xp);
+  const xp = Gamification.calculateXPPreview(task, state.profile.current_streak);
+  const xpPreview = document.getElementById('xpPreview');
+  if (xpPreview) xpPreview.textContent = Gamification.formatXP(xp);
 }
 
-// Toasts
+// ============================================
+// TOASTS
+// ============================================
+
 function showToast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
   const toast = document.createElement('div');
@@ -658,7 +1183,10 @@ function showAchievementToast(achievement) {
   }, 5000);
 }
 
-// Utility
+// ============================================
+// UTILITY
+// ============================================
+
 function escapeHtml(text) {
   if (!text) return '';
   const div = document.createElement('div');
@@ -666,130 +1194,92 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function logout() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  window.location.href = 'index.html';
+// ============================================
+// RENDER ALL
+// ============================================
+
+function renderAll() {
+  renderTasks();
+  renderProjectsList();
+  renderCategoriesList();
+  updateProjectSelect();
+  updateCategorySelect();
+  updateTaskCounts();
+  updateUserDisplay();
 }
 
-// ========================================
-// Keyboard Shortcuts System
-// ========================================
+// ============================================
+// KEYBOARD SHORTCUTS
+// ============================================
 
-// Keyboard state
-let pendingKey = null;
-let pendingKeyTimeout = null;
 let selectedTaskIndex = -1;
 let commandPaletteSelectedIndex = 0;
 
-// Command definitions for palette
 const commands = [
-  // Navigation
   { id: 'go-inbox', title: 'Go to Inbox', description: 'View all tasks', icon: '📥', shortcut: ['1', 'I'], category: 'Navigation', action: () => setActiveView('inbox') },
   { id: 'go-today', title: 'Go to Today', description: 'Tasks due today', icon: '📅', shortcut: ['2', 'T'], category: 'Navigation', action: () => setActiveView('today') },
   { id: 'go-upcoming', title: 'Go to Upcoming', description: 'Future tasks', icon: '📆', shortcut: ['3', 'U'], category: 'Navigation', action: () => setActiveView('upcoming') },
   { id: 'go-completed', title: 'Go to Completed', description: 'Finished tasks', icon: '✅', shortcut: ['4', 'D'], category: 'Navigation', action: () => setActiveView('completed') },
   { id: 'go-stats', title: 'Go to Stats', description: 'View achievements', icon: '📊', shortcut: ['5', 'S'], category: 'Navigation', action: () => showStatsModal() },
-
-  // Create
   { id: 'quick-add', title: 'Quick Add Task', description: 'Focus quick add input', icon: '✨', shortcut: ['N'], category: 'Create', action: () => focusQuickAdd() },
   { id: 'new-task', title: 'Full Task Modal', description: 'Open task form', icon: '➕', shortcut: ['A'], category: 'Create', action: () => showTaskModal() },
   { id: 'new-project', title: 'New Project', description: 'Create a new project', icon: '📁', shortcut: ['P'], category: 'Create', action: () => showProjectModal() },
   { id: 'new-category', title: 'New Category', description: 'Create a new category', icon: '🏷️', shortcut: ['C'], category: 'Create', action: () => showCategoryModal() },
-
-  // Actions
   { id: 'show-shortcuts', title: 'Keyboard Shortcuts', description: 'Show all shortcuts', icon: '⌨️', shortcut: ['?'], category: 'Help', action: () => showShortcutsModal() },
 ];
 
-// Check if focus is on an input element
 function isInputFocused() {
   const activeElement = document.activeElement;
   const tagName = activeElement?.tagName?.toLowerCase();
   return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || activeElement?.isContentEditable;
 }
 
-// Check if any modal is open
 function isModalOpen() {
   return document.querySelector('.modal-overlay.active') !== null;
 }
 
-// Check if command palette is open
 function isCommandPaletteOpen() {
   return document.getElementById('commandPalette')?.classList.contains('active');
 }
 
-// Show pending key indicator
-function showPendingKey(key) {
-  const indicator = document.getElementById('pendingKeyIndicator');
-  const display = document.getElementById('pendingKeyDisplay');
-  display.textContent = key.toUpperCase();
-  indicator.classList.add('visible');
-}
-
-// Hide pending key indicator
-function hidePendingKey() {
-  const indicator = document.getElementById('pendingKeyIndicator');
-  indicator.classList.remove('visible');
-}
-
-// Clear pending key state
-function clearPendingKey() {
-  pendingKey = null;
-  if (pendingKeyTimeout) {
-    clearTimeout(pendingKeyTimeout);
-    pendingKeyTimeout = null;
-  }
-  hidePendingKey();
-}
-
-// Get visible task cards
 function getTaskCards() {
   return Array.from(document.querySelectorAll('.task-card'));
 }
 
-// Update task selection UI
 function updateTaskSelection() {
   const taskCards = getTaskCards();
   taskCards.forEach((card, index) => {
     card.classList.toggle('keyboard-selected', index === selectedTaskIndex);
   });
 
-  // Scroll selected task into view
   if (selectedTaskIndex >= 0 && taskCards[selectedTaskIndex]) {
     taskCards[selectedTaskIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }
 
-// Select next task
 function selectNextTask() {
   const taskCards = getTaskCards();
   if (taskCards.length === 0) return;
-
   selectedTaskIndex = Math.min(selectedTaskIndex + 1, taskCards.length - 1);
   if (selectedTaskIndex < 0) selectedTaskIndex = 0;
   updateTaskSelection();
 }
 
-// Select previous task
 function selectPreviousTask() {
   const taskCards = getTaskCards();
   if (taskCards.length === 0) return;
-
   if (selectedTaskIndex < 0) selectedTaskIndex = 0;
   else selectedTaskIndex = Math.max(selectedTaskIndex - 1, 0);
   updateTaskSelection();
 }
 
-// Get selected task
 function getSelectedTask() {
   const taskCards = getTaskCards();
   if (selectedTaskIndex < 0 || selectedTaskIndex >= taskCards.length) return null;
-
   const taskId = taskCards[selectedTaskIndex]?.dataset.id;
-  return tasks.find(t => t.id === taskId);
+  return state.tasks.find(t => t.id === taskId);
 }
 
-// Command Palette
 function showCommandPalette() {
   const palette = document.getElementById('commandPalette');
   const input = document.getElementById('commandPaletteInput');
@@ -808,7 +1298,6 @@ function renderCommandPalette(query) {
   const list = document.getElementById('commandPaletteList');
   const lowerQuery = query.toLowerCase();
 
-  // Filter commands
   const filteredCommands = commands.filter(cmd =>
     cmd.title.toLowerCase().includes(lowerQuery) ||
     cmd.description.toLowerCase().includes(lowerQuery) ||
@@ -825,14 +1314,12 @@ function renderCommandPalette(query) {
     return;
   }
 
-  // Group by category
   const grouped = {};
   filteredCommands.forEach(cmd => {
     if (!grouped[cmd.category]) grouped[cmd.category] = [];
     grouped[cmd.category].push(cmd);
   });
 
-  // Render
   let html = '';
   let globalIndex = 0;
 
@@ -864,11 +1351,9 @@ function renderCommandPalette(query) {
 
   list.innerHTML = html;
 
-  // Add click handlers
   list.querySelectorAll('.command-palette-item').forEach(item => {
     item.addEventListener('click', () => {
-      const cmdId = item.dataset.commandId;
-      executeCommand(cmdId);
+      executeCommand(item.dataset.commandId);
     });
     item.addEventListener('mouseenter', () => {
       commandPaletteSelectedIndex = parseInt(item.dataset.index);
@@ -913,7 +1398,6 @@ function handleCommandPaletteKeydown(e) {
     e.preventDefault();
     closeCommandPalette();
   } else if (e.key === 'Tab') {
-    // Tab cycles through results
     e.preventDefault();
     if (e.shiftKey) {
       commandPaletteSelectedIndex = commandPaletteSelectedIndex <= 0 ? filteredCommands.length - 1 : commandPaletteSelectedIndex - 1;
@@ -925,17 +1409,13 @@ function handleCommandPaletteKeydown(e) {
   }
 }
 
-// Helper to scroll command palette item into view
 function scrollCommandItemIntoView() {
   setTimeout(() => {
     const selected = document.querySelector('.command-palette-item.selected');
-    if (selected) {
-      selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
+    if (selected) selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, 0);
 }
 
-// Shortcuts Modal
 function showShortcutsModal() {
   document.getElementById('shortcutsModal').classList.add('active');
 }
@@ -944,30 +1424,25 @@ function closeShortcutsModal() {
   document.getElementById('shortcutsModal').classList.remove('active');
 }
 
-// Main keyboard handler
 function handleKeydown(e) {
   const key = e.key.toLowerCase();
   const isMeta = e.metaKey || e.ctrlKey;
 
-  // Command palette is open - handle its own keys
   if (isCommandPaletteOpen()) {
     if (e.key === 'Escape') {
       e.preventDefault();
       closeCommandPalette();
       return;
     }
-    // Let the palette input handle other keys
     return;
   }
 
-  // Cmd/Ctrl+K - Command Palette (works everywhere)
   if (isMeta && key === 'k') {
     e.preventDefault();
     showCommandPalette();
     return;
   }
 
-  // Cmd/Ctrl+Enter - Save in modal
   if (isMeta && e.key === 'Enter') {
     if (document.getElementById('taskModal').classList.contains('active')) {
       e.preventDefault();
@@ -986,168 +1461,99 @@ function handleKeydown(e) {
     }
   }
 
-  // Escape - Close modals
   if (e.key === 'Escape') {
     closeTaskModal();
     closeProjectModal();
     closeCategoryModal();
     closeStatsModal();
     closeShortcutsModal();
-    clearPendingKey();
     selectedTaskIndex = -1;
     updateTaskSelection();
     return;
   }
 
-  // Don't process shortcuts when typing in inputs
   if (isInputFocused()) return;
-
-  // Don't process shortcuts when modal is open (except escape which is handled above)
   if (isModalOpen()) return;
 
-  // Single key shortcuts (no sequences needed)
   switch (key) {
-    // Navigation - single keys
     case '1':
     case 'i':
       e.preventDefault();
       setActiveView('inbox');
       break;
-
     case '2':
     case 't':
       e.preventDefault();
       setActiveView('today');
       break;
-
     case '3':
     case 'u':
       e.preventDefault();
       setActiveView('upcoming');
       break;
-
     case '4':
     case 'd':
       e.preventDefault();
       setActiveView('completed');
       break;
-
     case '5':
     case 's':
       e.preventDefault();
       showStatsModal();
       break;
-
-    // New task - focus quick add input
     case 'n':
       e.preventDefault();
       focusQuickAdd();
       break;
-
-    // Full task modal
     case 'a':
       e.preventDefault();
       showTaskModal();
       break;
-
-    // Create project
     case 'p':
       e.preventDefault();
       showProjectModal();
       break;
-
-    // Create category
     case 'c':
       e.preventDefault();
       showCategoryModal();
       break;
-
-    // Show shortcuts help
     case '?':
       e.preventDefault();
       showShortcutsModal();
       break;
-
-    // Task navigation - vim style
     case 'j':
     case 'arrowdown':
       e.preventDefault();
       selectNextTask();
       break;
-
     case 'k':
     case 'arrowup':
       e.preventDefault();
       selectPreviousTask();
       break;
-
-    // Task actions (when task is selected)
-    case ' ': // Space - toggle complete
+    case ' ':
       e.preventDefault();
       const taskToToggle = getSelectedTask();
-      if (taskToToggle) {
-        toggleTaskComplete(taskToToggle.id, !taskToToggle.is_completed);
-      }
+      if (taskToToggle) toggleTaskComplete(taskToToggle.id, !taskToToggle.is_completed);
       break;
-
-    case 'e': // Edit selected task
+    case 'e':
       e.preventDefault();
       const taskToEdit = getSelectedTask();
-      if (taskToEdit) {
-        editTask(taskToEdit.id);
-      }
+      if (taskToEdit) editTask(taskToEdit.id);
       break;
-
     case 'backspace':
     case 'delete':
       e.preventDefault();
       const taskToDelete = getSelectedTask();
-      if (taskToDelete) {
-        deleteTask(taskToDelete.id);
-      }
+      if (taskToDelete) deleteTask(taskToDelete.id);
       break;
   }
 }
 
-// Initialize keyboard shortcuts
-document.addEventListener('keydown', handleKeydown);
+// ============================================
+// QUICK ADD
+// ============================================
 
-// Command palette input handler
-document.getElementById('commandPaletteInput')?.addEventListener('input', (e) => {
-  commandPaletteSelectedIndex = 0;
-  renderCommandPalette(e.target.value);
-});
-
-document.getElementById('commandPaletteInput')?.addEventListener('keydown', handleCommandPaletteKeydown);
-
-// Close command palette on overlay click
-document.getElementById('commandPalette')?.addEventListener('click', (e) => {
-  if (e.target.id === 'commandPalette') {
-    closeCommandPalette();
-  }
-});
-
-// Reset task selection when tasks change
-const originalRenderTasks = renderTasks;
-renderTasks = function() {
-  originalRenderTasks();
-  selectedTaskIndex = -1;
-};
-
-// Close modals on overlay click
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      overlay.classList.remove('active');
-    }
-  });
-});
-
-// ========================================
-// Quick Add Floating Input with Natural Language
-// ========================================
-
-// Parse natural language input for task creation
 function parseQuickAddInput(text) {
   let title = text;
   const result = {
@@ -1164,14 +1570,12 @@ function parseQuickAddInput(text) {
   const projectMatch = title.match(/@(\S+)/);
   if (projectMatch) {
     const projectName = projectMatch[1].toLowerCase().replace(/-/g, ' ');
-    const project = projects.find(p =>
+    const project = state.projects.find(p =>
       p.name.toLowerCase() === projectName ||
       p.name.toLowerCase().startsWith(projectName) ||
       p.name.toLowerCase().replace(/\s+/g, '-') === projectMatch[1].toLowerCase()
     );
-    if (project) {
-      result.project_id = project.id;
-    }
+    if (project) result.project_id = project.id;
     title = title.replace(/@\S+/, '').trim();
   }
 
@@ -1179,18 +1583,16 @@ function parseQuickAddInput(text) {
   const categoryMatch = title.match(/#(\S+)/);
   if (categoryMatch) {
     const categoryName = categoryMatch[1].toLowerCase().replace(/-/g, ' ');
-    const category = categories.find(c =>
+    const category = state.categories.find(c =>
       c.name.toLowerCase() === categoryName ||
       c.name.toLowerCase().startsWith(categoryName) ||
       c.name.toLowerCase().replace(/\s+/g, '-') === categoryMatch[1].toLowerCase()
     );
-    if (category) {
-      result.category_id = category.id;
-    }
+    if (category) result.category_id = category.id;
     title = title.replace(/#\S+/, '').trim();
   }
 
-  // Parse !priority (!high, !medium, !low, !1, !2, !3)
+  // Parse !priority
   const priorityMatch = title.match(/!(\S+)/);
   if (priorityMatch) {
     const p = priorityMatch[1].toLowerCase();
@@ -1200,7 +1602,7 @@ function parseQuickAddInput(text) {
     title = title.replace(/!\S+/, '').trim();
   }
 
-  // Parse ~difficulty (~easy, ~medium, ~hard, ~epic)
+  // Parse ~difficulty
   const difficultyMatch = title.match(/~(\S+)/);
   if (difficultyMatch) {
     const d = difficultyMatch[1].toLowerCase();
@@ -1211,7 +1613,7 @@ function parseQuickAddInput(text) {
     title = title.replace(/~\S+/, '').trim();
   }
 
-  // Parse ^tier (^quick, ^standard, ^major or ^1, ^2, ^3)
+  // Parse ^tier
   const tierMatch = title.match(/\^(\S+)/);
   if (tierMatch) {
     const t = tierMatch[1].toLowerCase();
@@ -1232,27 +1634,21 @@ function parseQuickAddInput(text) {
   return result;
 }
 
-// Parse natural language due dates
 function parseDueDate(text) {
   const now = new Date();
   let date = null;
   let remaining = text;
 
-  // Today
   if (/\btoday\b/i.test(text)) {
     date = new Date(now);
     date.setHours(23, 59, 0, 0);
     remaining = text.replace(/\btoday\b/i, '').trim();
-  }
-  // Tomorrow
-  else if (/\btomorrow\b/i.test(text) || /\btmr\b/i.test(text) || /\btmrw\b/i.test(text)) {
+  } else if (/\btomorrow\b/i.test(text) || /\btmr\b/i.test(text) || /\btmrw\b/i.test(text)) {
     date = new Date(now);
     date.setDate(date.getDate() + 1);
     date.setHours(23, 59, 0, 0);
     remaining = text.replace(/\b(tomorrow|tmr|tmrw)\b/i, '').trim();
-  }
-  // Day names (monday, tuesday, etc.)
-  else {
+  } else {
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayAbbr = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -1271,7 +1667,6 @@ function parseDueDate(text) {
     }
   }
 
-  // "in X days"
   if (!date) {
     const inDaysMatch = text.match(/\bin\s+(\d+)\s*d(?:ays?)?\b/i);
     if (inDaysMatch) {
@@ -1282,7 +1677,6 @@ function parseDueDate(text) {
     }
   }
 
-  // "next week"
   if (!date && /\bnext\s*week\b/i.test(text)) {
     date = new Date(now);
     date.setDate(date.getDate() + 7);
@@ -1290,9 +1684,7 @@ function parseDueDate(text) {
     remaining = text.replace(/\bnext\s*week\b/i, '').trim();
   }
 
-  // Specific date formats: 12/25, 12-25, Dec 25, December 25
   if (!date) {
-    // MM/DD or MM-DD
     const slashMatch = text.match(/\b(\d{1,2})[\/\-](\d{1,2})\b/);
     if (slashMatch) {
       const month = parseInt(slashMatch[1]) - 1;
@@ -1303,7 +1695,6 @@ function parseDueDate(text) {
     }
   }
 
-  // Clean up extra spaces
   remaining = remaining.replace(/\s+/g, ' ').trim();
 
   return { date: date ? date.toISOString() : null, remaining };
@@ -1327,57 +1718,50 @@ function blurQuickAdd() {
   }
 }
 
-async function submitQuickAdd() {
+function submitQuickAdd() {
   const input = document.getElementById('quickAddInput');
   const rawText = input?.value?.trim();
 
   if (!rawText) return;
 
-  try {
-    const parsed = parseQuickAddInput(rawText);
+  const parsed = parseQuickAddInput(rawText);
 
-    if (!parsed.title) {
-      showToast('Please enter a task title', 'error');
-      return;
-    }
-
-    await api.createTask(parsed);
-
-    input.value = '';
-    hideQuickAddHints();
-
-    // Build success message
-    let msg = 'Task created!';
-    if (parsed.project_id) {
-      const proj = projects.find(p => p.id === parsed.project_id);
-      if (proj) msg += ` in ${proj.name}`;
-    }
-    if (parsed.due_date) {
-      msg += ` due ${Gamification.formatDueDate(parsed.due_date)?.text || 'soon'}`;
-    }
-
-    showToast(msg, 'success');
-    await loadTasks();
-
-    // Keep focus for rapid entry
-    input.focus();
-  } catch (error) {
-    console.error('Failed to create task:', error);
-    showToast(error.message || 'Failed to create task', 'error');
+  if (!parsed.title) {
+    showToast('Please enter a task title', 'error');
+    return;
   }
+
+  createTask(parsed);
+
+  input.value = '';
+  hideQuickAddHints();
+
+  let msg = 'Task created!';
+  if (parsed.project_id) {
+    const proj = state.projects.find(p => p.id === parsed.project_id);
+    if (proj) msg += ` in ${proj.name}`;
+  }
+  if (parsed.due_date) {
+    msg += ` due ${Gamification.formatDueDate(parsed.due_date)?.text || 'soon'}`;
+  }
+
+  showToast(msg, 'success');
+  input.focus();
 }
 
-// Quick add autocomplete hints
+// Quick add autocomplete
+let quickAddHintIndex = 0;
+
 function showQuickAddHints(type, query) {
   let hints = [];
   const hintsContainer = document.getElementById('quickAddAutocomplete');
 
   if (type === 'project') {
-    hints = projects.filter(p =>
+    hints = state.projects.filter(p =>
       p.name.toLowerCase().includes(query.toLowerCase())
     ).slice(0, 5).map(p => ({ label: p.name, value: `@${p.name.replace(/\s+/g, '-')}`, icon: '📁' }));
   } else if (type === 'category') {
-    hints = categories.filter(c =>
+    hints = state.categories.filter(c =>
       c.name.toLowerCase().includes(query.toLowerCase())
     ).slice(0, 5).map(c => ({ label: c.name, value: `#${c.name.replace(/\s+/g, '-')}`, icon: '🏷️', color: c.color }));
   } else if (type === 'priority') {
@@ -1416,7 +1800,6 @@ function showQuickAddHints(type, query) {
 
   hintsContainer.classList.add('visible');
 
-  // Add click handlers
   hintsContainer.querySelectorAll('.quick-add-hint-item').forEach(item => {
     item.addEventListener('click', () => selectQuickAddHint(item.dataset.value));
   });
@@ -1434,7 +1817,6 @@ function selectQuickAddHint(value) {
   const input = document.getElementById('quickAddInput');
   if (!input) return;
 
-  // Replace the trigger and query with the selected value
   const text = input.value;
   const lastTrigger = Math.max(
     text.lastIndexOf('@'),
@@ -1452,123 +1834,158 @@ function selectQuickAddHint(value) {
   input.focus();
 }
 
-// Quick add autocomplete state
-let quickAddHintIndex = 0;
+// ============================================
+// INITIALIZATION
+// ============================================
 
-// Quick add input handlers
-document.getElementById('quickAddInput')?.addEventListener('keydown', (e) => {
-  const hintsContainer = document.getElementById('quickAddAutocomplete');
-  const isHintsVisible = hintsContainer?.classList.contains('visible');
+document.addEventListener('DOMContentLoaded', () => {
+  // Load theme first
+  loadSavedTheme();
 
-  // Navigate hints with arrow keys
-  if (isHintsVisible && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab')) {
-    e.preventDefault();
-    const items = hintsContainer.querySelectorAll('.quick-add-hint-item');
-    if (items.length === 0) return;
+  // Load local state
+  loadState();
 
-    items[quickAddHintIndex]?.classList.remove('selected');
+  // Initialize Supabase (optional cloud sync)
+  initSupabase();
 
-    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-      quickAddHintIndex = (quickAddHintIndex + 1) % items.length;
-    } else {
-      quickAddHintIndex = (quickAddHintIndex - 1 + items.length) % items.length;
-    }
+  // Render everything
+  renderAll();
 
-    items[quickAddHintIndex]?.classList.add('selected');
-    return;
+  // Setup XP preview
+  setupXPPreview();
+
+  // Setup keyboard shortcuts
+  document.addEventListener('keydown', handleKeydown);
+
+  // Command palette input handler
+  const commandPaletteInput = document.getElementById('commandPaletteInput');
+  if (commandPaletteInput) {
+    commandPaletteInput.addEventListener('input', (e) => {
+      commandPaletteSelectedIndex = 0;
+      renderCommandPalette(e.target.value);
+    });
+    commandPaletteInput.addEventListener('keydown', handleCommandPaletteKeydown);
   }
 
-  // Select hint with Enter when hints are visible
-  if (isHintsVisible && e.key === 'Enter') {
-    e.preventDefault();
-    const selected = hintsContainer.querySelector('.quick-add-hint-item.selected');
-    if (selected) {
-      selectQuickAddHint(selected.dataset.value);
-    }
-    return;
+  // Close command palette on overlay click
+  const commandPalette = document.getElementById('commandPalette');
+  if (commandPalette) {
+    commandPalette.addEventListener('click', (e) => {
+      if (e.target.id === 'commandPalette') closeCommandPalette();
+    });
   }
 
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    submitQuickAdd();
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    if (isHintsVisible) {
-      hideQuickAddHints();
-    } else {
-      blurQuickAdd();
-    }
-  } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-    // Cmd+Enter opens full modal with current text
-    e.preventDefault();
-    const input = document.getElementById('quickAddInput');
-    const parsed = parseQuickAddInput(input?.value?.trim() || '');
-    blurQuickAdd();
-    showTaskModal();
-    if (parsed.title) document.getElementById('taskTitle').value = parsed.title;
-    if (parsed.project_id) document.getElementById('taskProject').value = parsed.project_id;
-    if (parsed.category_id) document.getElementById('taskCategory').value = parsed.category_id;
-    if (parsed.priority) document.getElementById('taskPriority').value = parsed.priority;
-    if (parsed.difficulty) document.getElementById('taskDifficulty').value = parsed.difficulty;
-    if (parsed.tier) document.getElementById('taskTier').value = parsed.tier;
-    if (parsed.due_date) document.getElementById('taskDueDate').value = parsed.due_date.slice(0, 16);
-    updateXPPreview();
-  }
-});
+  // Close modals on overlay click
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.remove('active');
+    });
+  });
 
-// Detect triggers while typing
-document.getElementById('quickAddInput')?.addEventListener('input', (e) => {
-  const text = e.target.value;
-  const cursorPos = e.target.selectionStart;
-  const textBeforeCursor = text.slice(0, cursorPos);
+  // Quick add input handlers
+  const quickAddInput = document.getElementById('quickAddInput');
+  if (quickAddInput) {
+    quickAddInput.addEventListener('keydown', (e) => {
+      const hintsContainer = document.getElementById('quickAddAutocomplete');
+      const isHintsVisible = hintsContainer?.classList.contains('visible');
 
-  // Find the last trigger character before cursor
-  const triggers = ['@', '#', '!', '~', '^'];
-  let lastTriggerPos = -1;
-  let lastTrigger = null;
+      if (isHintsVisible && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab')) {
+        e.preventDefault();
+        const items = hintsContainer.querySelectorAll('.quick-add-hint-item');
+        if (items.length === 0) return;
 
-  for (const trigger of triggers) {
-    const pos = textBeforeCursor.lastIndexOf(trigger);
-    if (pos > lastTriggerPos) {
-      // Check if there's a space after the trigger (meaning it's complete)
-      const afterTrigger = textBeforeCursor.slice(pos + 1);
-      if (!afterTrigger.includes(' ')) {
-        lastTriggerPos = pos;
-        lastTrigger = trigger;
+        items[quickAddHintIndex]?.classList.remove('selected');
+
+        if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+          quickAddHintIndex = (quickAddHintIndex + 1) % items.length;
+        } else {
+          quickAddHintIndex = (quickAddHintIndex - 1 + items.length) % items.length;
+        }
+
+        items[quickAddHintIndex]?.classList.add('selected');
+        return;
       }
-    }
+
+      if (isHintsVisible && e.key === 'Enter') {
+        e.preventDefault();
+        const selected = hintsContainer.querySelector('.quick-add-hint-item.selected');
+        if (selected) selectQuickAddHint(selected.dataset.value);
+        return;
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitQuickAdd();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (isHintsVisible) {
+          hideQuickAddHints();
+        } else {
+          blurQuickAdd();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        const parsed = parseQuickAddInput(quickAddInput.value?.trim() || '');
+        blurQuickAdd();
+        showTaskModal();
+        if (parsed.title) document.getElementById('taskTitle').value = parsed.title;
+        if (parsed.project_id) document.getElementById('taskProject').value = parsed.project_id;
+        if (parsed.category_id) document.getElementById('taskCategory').value = parsed.category_id;
+        if (parsed.priority) document.getElementById('taskPriority').value = parsed.priority;
+        if (parsed.difficulty) document.getElementById('taskDifficulty').value = parsed.difficulty;
+        if (parsed.tier) document.getElementById('taskTier').value = parsed.tier;
+        if (parsed.due_date) document.getElementById('taskDueDate').value = parsed.due_date.slice(0, 16);
+        updateXPPreview();
+      }
+    });
+
+    quickAddInput.addEventListener('input', (e) => {
+      const text = e.target.value;
+      const cursorPos = e.target.selectionStart;
+      const textBeforeCursor = text.slice(0, cursorPos);
+
+      const triggers = ['@', '#', '!', '~', '^'];
+      let lastTriggerPos = -1;
+      let lastTrigger = null;
+
+      for (const trigger of triggers) {
+        const pos = textBeforeCursor.lastIndexOf(trigger);
+        if (pos > lastTriggerPos) {
+          const afterTrigger = textBeforeCursor.slice(pos + 1);
+          if (!afterTrigger.includes(' ')) {
+            lastTriggerPos = pos;
+            lastTrigger = trigger;
+          }
+        }
+      }
+
+      if (lastTrigger && lastTriggerPos >= 0) {
+        const query = textBeforeCursor.slice(lastTriggerPos + 1);
+        quickAddHintIndex = 0;
+
+        switch (lastTrigger) {
+          case '@': showQuickAddHints('project', query); break;
+          case '#': showQuickAddHints('category', query); break;
+          case '!': showQuickAddHints('priority', query); break;
+          case '~': showQuickAddHints('difficulty', query); break;
+          case '^': showQuickAddHints('tier', query); break;
+        }
+      } else {
+        hideQuickAddHints();
+      }
+    });
+
+    quickAddInput.addEventListener('focus', () => {
+      quickAddInput.placeholder = 'Task @project #category !priority ~difficulty today...';
+    });
+
+    quickAddInput.addEventListener('blur', () => {
+      if (!quickAddInput.value) {
+        quickAddInput.placeholder = 'Press N to add a task...';
+      }
+      setTimeout(() => {
+        if (document.activeElement !== quickAddInput) hideQuickAddHints();
+      }, 150);
+    });
   }
-
-  if (lastTrigger && lastTriggerPos >= 0) {
-    const query = textBeforeCursor.slice(lastTriggerPos + 1);
-    quickAddHintIndex = 0;
-
-    switch (lastTrigger) {
-      case '@': showQuickAddHints('project', query); break;
-      case '#': showQuickAddHints('category', query); break;
-      case '!': showQuickAddHints('priority', query); break;
-      case '~': showQuickAddHints('difficulty', query); break;
-      case '^': showQuickAddHints('tier', query); break;
-    }
-  } else {
-    hideQuickAddHints();
-  }
-});
-
-// Update placeholder on focus/blur
-document.getElementById('quickAddInput')?.addEventListener('focus', () => {
-  document.getElementById('quickAddInput').placeholder = 'Task @project #category !priority ~difficulty today...';
-});
-
-document.getElementById('quickAddInput')?.addEventListener('blur', () => {
-  const input = document.getElementById('quickAddInput');
-  if (!input.value) {
-    input.placeholder = 'Press N to add a task...';
-  }
-  // Delay hiding hints to allow click selection
-  setTimeout(() => {
-    if (document.activeElement !== input) {
-      hideQuickAddHints();
-    }
-  }, 150);
 });
