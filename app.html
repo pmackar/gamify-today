@@ -577,6 +577,95 @@
     <span style="margin-left: 8px; color: var(--text-tertiary);">waiting for next key...</span>
   </div>
 
+  <!-- Mobile Bottom Navigation -->
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-item active" data-view="inbox" onclick="mobileNavTo('inbox')">
+      <span class="mobile-nav-icon">📥</span>
+      <span class="mobile-nav-label">Inbox</span>
+    </button>
+    <button class="mobile-nav-item" data-view="today" onclick="mobileNavTo('today')">
+      <span class="mobile-nav-icon">📅</span>
+      <span class="mobile-nav-label">Today</span>
+    </button>
+    <button class="mobile-nav-fab" onclick="showTaskModal()">
+      <span>+</span>
+    </button>
+    <button class="mobile-nav-item" data-view="upcoming" onclick="mobileNavTo('upcoming')">
+      <span class="mobile-nav-icon">📆</span>
+      <span class="mobile-nav-label">Upcoming</span>
+    </button>
+    <button class="mobile-nav-item" data-view="browse" onclick="toggleBrowsePanel()">
+      <span class="mobile-nav-icon">☰</span>
+      <span class="mobile-nav-label">Browse</span>
+    </button>
+  </nav>
+
+  <!-- Mobile Browse Panel (slides up) -->
+  <div class="mobile-browse-overlay" id="mobileBrowseOverlay" onclick="closeBrowsePanel()"></div>
+  <div class="mobile-browse-panel" id="mobileBrowsePanel">
+    <div class="mobile-browse-header">
+      <h3>Browse</h3>
+      <button class="mobile-browse-close" onclick="closeBrowsePanel()">✕</button>
+    </div>
+    <div class="mobile-browse-content">
+      <!-- Profile Card -->
+      <div class="mobile-profile-card">
+        <div class="mobile-profile-avatar" id="mobileAvatarIcon">🎮</div>
+        <div class="mobile-profile-info">
+          <div class="mobile-profile-level">Level <span id="mobileLevelDisplay">1</span></div>
+          <div class="mobile-profile-xp"><span id="mobileXpDisplay">0</span> / <span id="mobileXpNextDisplay">100</span> XP</div>
+        </div>
+        <div class="mobile-profile-streak">
+          <span class="flame-icon">🔥</span>
+          <span id="mobileStreakDisplay">0</span>
+        </div>
+      </div>
+
+      <!-- Views Section -->
+      <div class="mobile-browse-section">
+        <div class="mobile-browse-section-title">Views</div>
+        <button class="mobile-browse-item" onclick="mobileNavTo('completed'); closeBrowsePanel()">
+          <span class="mobile-browse-item-icon">✅</span>
+          <span>Completed</span>
+        </button>
+        <button class="mobile-browse-item" onclick="showStatsModal(); closeBrowsePanel()">
+          <span class="mobile-browse-item-icon">📊</span>
+          <span>Stats & Achievements</span>
+        </button>
+      </div>
+
+      <!-- Projects Section -->
+      <div class="mobile-browse-section">
+        <div class="mobile-browse-section-title">
+          <span>Projects</span>
+          <button class="mobile-browse-add" onclick="showProjectModal(); closeBrowsePanel()">+</button>
+        </div>
+        <div id="mobileProjectsList"></div>
+      </div>
+
+      <!-- Categories Section -->
+      <div class="mobile-browse-section">
+        <div class="mobile-browse-section-title">
+          <span>Categories</span>
+          <button class="mobile-browse-add" onclick="showCategoryModal(); closeBrowsePanel()">+</button>
+        </div>
+        <div id="mobileCategoriesList"></div>
+      </div>
+
+      <!-- Auth Section -->
+      <div class="mobile-browse-section mobile-browse-auth">
+        <button id="mobile-login-btn" class="mobile-browse-item" onclick="loginWithGoogle()">
+          <span class="mobile-browse-item-icon">🔐</span>
+          <span>Login for Cloud Sync</span>
+        </button>
+        <div id="mobile-user-info" class="mobile-browse-item hidden" onclick="showUserMenu()">
+          <span id="mobile-sync-indicator" class="sync-icon">☁</span>
+          <span>Cloud Sync Active</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/gamification.js"></script>
   <script src="js/app.js"></script>
 </body>

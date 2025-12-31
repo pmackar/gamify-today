@@ -808,12 +808,18 @@ function renderProjectsList() {
   container.innerHTML = state.projects.map(project => {
     const taskCount = state.tasks.filter(t => t.project_id === project.id && !t.is_completed).length;
     return `
-      <div class="nav-item ${currentView === 'project-' + project.id ? 'active' : ''}"
-           data-view="project-${project.id}"
-           onclick="setActiveView('project-${project.id}')">
-        <span class="nav-item-icon">📁</span>
-        <span class="truncate">${escapeHtml(project.name)}</span>
-        <span class="nav-item-count">${taskCount}</span>
+      <div class="nav-item-wrapper">
+        <div class="nav-item ${currentView === 'project-' + project.id ? 'active' : ''}"
+             data-view="project-${project.id}"
+             onclick="setActiveView('project-${project.id}')">
+          <span class="nav-item-icon">📁</span>
+          <span class="truncate">${escapeHtml(project.name)}</span>
+          <span class="nav-item-count">${taskCount}</span>
+        </div>
+        <div class="nav-item-actions">
+          <button class="nav-item-action" onclick="event.stopPropagation(); editProject('${project.id}')" title="Edit project">✏️</button>
+          <button class="nav-item-action nav-item-action-delete" onclick="event.stopPropagation(); deleteProject('${project.id}')" title="Delete project">🗑️</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -858,11 +864,17 @@ function renderCategoriesList() {
   if (!container) return;
 
   container.innerHTML = state.categories.map(cat => `
-    <div class="nav-item ${currentView === 'category-' + cat.id ? 'active' : ''}"
-         data-view="category-${cat.id}"
-         onclick="setActiveView('category-${cat.id}')">
-      <span class="category-dot" style="background: ${cat.color}"></span>
-      <span class="truncate">${escapeHtml(cat.name)}</span>
+    <div class="nav-item-wrapper">
+      <div class="nav-item ${currentView === 'category-' + cat.id ? 'active' : ''}"
+           data-view="category-${cat.id}"
+           onclick="setActiveView('category-${cat.id}')">
+        <span class="category-dot" style="background: ${cat.color}"></span>
+        <span class="truncate">${escapeHtml(cat.name)}</span>
+      </div>
+      <div class="nav-item-actions">
+        <button class="nav-item-action" onclick="event.stopPropagation(); editCategory('${cat.id}')" title="Edit category">✏️</button>
+        <button class="nav-item-action nav-item-action-delete" onclick="event.stopPropagation(); deleteCategory('${cat.id}')" title="Delete category">🗑️</button>
+      </div>
     </div>
   `).join('');
 }
@@ -1075,6 +1087,88 @@ function saveCategory() {
 
   closeCategoryModal();
   renderCategoriesList();
+}
+
+// Edit project
+function editProject(projectId) {
+  const project = state.projects.find(p => p.id === projectId);
+  if (!project) return;
+
+  document.getElementById('projectId').value = project.id;
+  document.getElementById('projectName').value = project.name;
+  document.getElementById('projectDescription').value = project.description || '';
+  document.getElementById('projectStartDate').value = project.start_date || '';
+  document.getElementById('projectDueDate').value = project.due_date || '';
+  document.getElementById('projectModal').classList.add('active');
+}
+
+// Delete project
+function deleteProject(projectId) {
+  const project = state.projects.find(p => p.id === projectId);
+  if (!project) return;
+
+  if (!confirm(`Delete project "${project.name}"? Tasks will be unassigned but not deleted.`)) return;
+
+  // Unassign tasks from this project
+  state.tasks.forEach(task => {
+    if (task.project_id === projectId) {
+      task.project_id = null;
+      task.updated_at = new Date().toISOString();
+    }
+  });
+
+  // Remove project
+  state.projects = state.projects.filter(p => p.id !== projectId);
+  saveState();
+
+  // If viewing this project, go to inbox
+  if (currentView === `project-${projectId}`) {
+    setActiveView('inbox');
+  }
+
+  renderProjectsList();
+  renderMobileProjectsList();
+  showToast('Project deleted', 'success');
+}
+
+// Edit category
+function editCategory(categoryId) {
+  const category = state.categories.find(c => c.id === categoryId);
+  if (!category) return;
+
+  document.getElementById('categoryId').value = category.id;
+  document.getElementById('categoryName').value = category.name;
+  document.getElementById('categoryColor').value = category.color || '#6366f1';
+  document.getElementById('categoryModal').classList.add('active');
+}
+
+// Delete category
+function deleteCategory(categoryId) {
+  const category = state.categories.find(c => c.id === categoryId);
+  if (!category) return;
+
+  if (!confirm(`Delete category "${category.name}"? Tasks will be unassigned but not deleted.`)) return;
+
+  // Unassign tasks from this category
+  state.tasks.forEach(task => {
+    if (task.category_id === categoryId) {
+      task.category_id = null;
+      task.updated_at = new Date().toISOString();
+    }
+  });
+
+  // Remove category
+  state.categories = state.categories.filter(c => c.id !== categoryId);
+  saveState();
+
+  // If viewing this category, go to inbox
+  if (currentView === `category-${categoryId}`) {
+    setActiveView('inbox');
+  }
+
+  renderCategoriesList();
+  renderMobileCategoriesList();
+  showToast('Category deleted', 'success');
 }
 
 function showStatsModal() {
@@ -1708,6 +1802,65 @@ function focusQuickAdd() {
   }
 }
 
+// Handle delete command from quick add
+function handleDeleteCommand(target) {
+  // Try to find a matching project
+  const project = state.projects.find(p => p.name.toLowerCase() === target);
+  if (project) {
+    deleteProject(project.id);
+    return;
+  }
+
+  // Try to find a matching category
+  const category = state.categories.find(c => c.name.toLowerCase() === target);
+  if (category) {
+    deleteCategory(category.id);
+    return;
+  }
+
+  // Try to find a matching task (incomplete tasks first, then completed)
+  const task = state.tasks.find(t => t.title.toLowerCase() === target && !t.is_completed) ||
+               state.tasks.find(t => t.title.toLowerCase() === target);
+  if (task) {
+    if (confirm(`Delete task "${task.title}"?`)) {
+      state.tasks = state.tasks.filter(t => t.id !== task.id);
+      saveState();
+      renderTasks();
+      updateTaskCounts();
+      showToast('Task deleted', 'success');
+    }
+    return;
+  }
+
+  // Try partial matches if exact match not found
+  const partialProject = state.projects.find(p => p.name.toLowerCase().includes(target));
+  if (partialProject) {
+    deleteProject(partialProject.id);
+    return;
+  }
+
+  const partialCategory = state.categories.find(c => c.name.toLowerCase().includes(target));
+  if (partialCategory) {
+    deleteCategory(partialCategory.id);
+    return;
+  }
+
+  const partialTask = state.tasks.find(t => t.title.toLowerCase().includes(target) && !t.is_completed) ||
+                      state.tasks.find(t => t.title.toLowerCase().includes(target));
+  if (partialTask) {
+    if (confirm(`Delete task "${partialTask.title}"?`)) {
+      state.tasks = state.tasks.filter(t => t.id !== partialTask.id);
+      saveState();
+      renderTasks();
+      updateTaskCounts();
+      showToast('Task deleted', 'success');
+    }
+    return;
+  }
+
+  showToast(`Nothing found matching "${target}"`, 'error');
+}
+
 function blurQuickAdd() {
   const input = document.getElementById('quickAddInput');
   if (input) {
@@ -1723,6 +1876,16 @@ function submitQuickAdd() {
   const rawText = input?.value?.trim();
 
   if (!rawText) return;
+
+  // Handle delete commands: del/kill [project/category/task name]
+  const deleteMatch = rawText.match(/^(del|kill)\s+(.+)$/i);
+  if (deleteMatch) {
+    const target = deleteMatch[2].trim().toLowerCase();
+    handleDeleteCommand(target);
+    input.value = '';
+    hideQuickAddHints();
+    return;
+  }
 
   const parsed = parseQuickAddInput(rawText);
 
@@ -1989,3 +2152,149 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ============================================
+// MOBILE NAVIGATION
+// ============================================
+
+function mobileNavTo(view) {
+  setActiveView(view);
+  updateMobileNavActive(view);
+}
+
+function updateMobileNavActive(view) {
+  // Update mobile nav buttons
+  document.querySelectorAll('.mobile-nav-item').forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.dataset.view === view) {
+      btn.classList.add('active');
+    }
+  });
+
+  // For completed or project/category views, highlight browse
+  if (view === 'completed' || view.startsWith('project-') || view.startsWith('category-')) {
+    document.querySelector('.mobile-nav-item[data-view="browse"]')?.classList.add('active');
+  }
+}
+
+function toggleBrowsePanel() {
+  const panel = document.getElementById('mobileBrowsePanel');
+  const overlay = document.getElementById('mobileBrowseOverlay');
+
+  if (panel.classList.contains('active')) {
+    closeBrowsePanel();
+  } else {
+    openBrowsePanel();
+  }
+}
+
+function openBrowsePanel() {
+  const panel = document.getElementById('mobileBrowsePanel');
+  const overlay = document.getElementById('mobileBrowseOverlay');
+
+  // Update mobile lists
+  renderMobileProjectsList();
+  renderMobileCategoriesList();
+  updateMobileProfile();
+  updateMobileAuthUI();
+
+  overlay.classList.add('active');
+  panel.classList.add('active');
+
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBrowsePanel() {
+  const panel = document.getElementById('mobileBrowsePanel');
+  const overlay = document.getElementById('mobileBrowseOverlay');
+
+  panel.classList.remove('active');
+  overlay.classList.remove('active');
+
+  // Restore body scroll
+  document.body.style.overflow = '';
+}
+
+function renderMobileProjectsList() {
+  const container = document.getElementById('mobileProjectsList');
+  if (!container) return;
+
+  if (state.projects.length === 0) {
+    container.innerHTML = '<div class="mobile-browse-item" style="color: var(--text-tertiary); font-size: 13px;">No projects yet</div>';
+    return;
+  }
+
+  container.innerHTML = state.projects.map(project => {
+    const taskCount = state.tasks.filter(t => t.project_id === project.id && !t.is_completed).length;
+    return `
+      <div class="mobile-browse-item-row">
+        <button class="mobile-browse-item" onclick="mobileNavTo('project-${project.id}'); closeBrowsePanel()">
+          <span class="mobile-browse-item-icon">📁</span>
+          <span>${escapeHtml(project.name)}</span>
+          <span class="mobile-browse-item-count">${taskCount}</span>
+        </button>
+        <div class="mobile-browse-item-actions">
+          <button class="mobile-browse-action" onclick="event.stopPropagation(); editProject('${project.id}'); closeBrowsePanel()" title="Edit">✏️</button>
+          <button class="mobile-browse-action mobile-browse-action-delete" onclick="event.stopPropagation(); deleteProject('${project.id}')" title="Delete">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMobileCategoriesList() {
+  const container = document.getElementById('mobileCategoriesList');
+  if (!container) return;
+
+  if (state.categories.length === 0) {
+    container.innerHTML = '<div class="mobile-browse-item" style="color: var(--text-tertiary); font-size: 13px;">No categories yet</div>';
+    return;
+  }
+
+  container.innerHTML = state.categories.map(cat => {
+    return `
+      <div class="mobile-browse-item-row">
+        <button class="mobile-browse-item" onclick="mobileNavTo('category-${cat.id}'); closeBrowsePanel()">
+          <span class="mobile-category-dot" style="background: ${cat.color}"></span>
+          <span>${escapeHtml(cat.name)}</span>
+        </button>
+        <div class="mobile-browse-item-actions">
+          <button class="mobile-browse-action" onclick="event.stopPropagation(); editCategory('${cat.id}'); closeBrowsePanel()" title="Edit">✏️</button>
+          <button class="mobile-browse-action mobile-browse-action-delete" onclick="event.stopPropagation(); deleteCategory('${cat.id}')" title="Delete">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateMobileProfile() {
+  const level = document.getElementById('mobileLevelDisplay');
+  const xp = document.getElementById('mobileXpDisplay');
+  const xpNext = document.getElementById('mobileXpNextDisplay');
+  const streak = document.getElementById('mobileStreakDisplay');
+  const avatar = document.getElementById('mobileAvatarIcon');
+
+  if (level) level.textContent = state.profile.level || 1;
+  if (xp) xp.textContent = state.profile.xp || 0;
+  if (xpNext) xpNext.textContent = state.profile.xp_to_next || 100;
+  if (streak) streak.textContent = state.profile.current_streak || 0;
+
+  if (avatar) {
+    const rankInfo = getRankForLevel(state.profile.level || 1);
+    avatar.textContent = rankInfo.icon;
+  }
+}
+
+function updateMobileAuthUI() {
+  const loginBtn = document.getElementById('mobile-login-btn');
+  const userInfo = document.getElementById('mobile-user-info');
+
+  if (currentUser) {
+    if (loginBtn) loginBtn.classList.add('hidden');
+    if (userInfo) userInfo.classList.remove('hidden');
+  } else {
+    if (loginBtn) loginBtn.classList.remove('hidden');
+    if (userInfo) userInfo.classList.add('hidden');
+  }
+}
